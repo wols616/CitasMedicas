@@ -1,0 +1,208 @@
+.fondo {
+  background: linear-gradient(135deg, #f5faff 60%, #e3eafc 100%);
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+/* Marca de agua del logo */
+.fondo::before {
+  content: "";
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  width: 350px;
+  height: 350px;
+  background: url("../../assets/logo_clinica.png") no-repeat center center;
+  background-size: contain;
+  opacity: 100%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ondas de color en la parte inferior */
+.fondo-onda-azul {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 120px;
+  background: linear-gradient(90deg, #2e5da1 60%, #f7838d 100%);
+  border-top-left-radius: 80px 40px;
+  border-top-right-radius: 120px 60px;
+  opacity: 0.18;
+  z-index: 1;
+}
+
+.fondo-onda-amarillo {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  width: 60%;
+  height: 60px;
+  background: #fad02c;
+  border-top-right-radius: 80px 40px;
+  opacity: 0.13;
+  z-index: 1;
+}
+
+.fondo > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Responsive ajustes para fondo y ondas */
+@media (max-width: 900px) {
+  .fondo::before {
+    width: 220px;
+    height: 220px;
+    top: 18%;
+  }
+  .fondo-onda-azul {
+    height: 80px;
+    border-top-left-radius: 50px 25px;
+    border-top-right-radius: 70px 35px;
+  }
+  .fondo-onda-amarillo {
+    height: 40px;
+    bottom: 24px;
+    border-top-right-radius: 50px 25px;
+    width: 70%;
+  }
+}
+
+@media (max-width: 600px) {
+  .fondo {
+    align-items: flex-start;
+    padding-top: 40px;
+  }
+  .fondo::before {
+    width: 120px;
+    height: 120px;
+    top: 10%;
+  }
+  .fondo-onda-azul {
+    height: 50px;
+    border-top-left-radius: 30px 15px;
+    border-top-right-radius: 40px 20px;
+  }
+  .fondo-onda-amarillo {
+    height: 24px;
+    bottom: 12px;
+    border-top-right-radius: 30px 15px;
+    width: 80%;
+  }
+}
+
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  width: 80%;
+  max-width: 900px;
+  margin: 0 auto;
+  gap: 2rem;
+  margin-top: 20vh;
+}
+
+.login-section {
+  flex: 1;
+  background: rgba(46, 93, 161, 0.10);
+  border-radius: 18px;
+  padding: 2.5rem 2rem;
+  min-width: 260px;
+  box-shadow: 0 2px 12px 0 rgba(46,93,161,0.06);
+}
+
+.register-section {
+  flex: 1;
+  background: #fff;
+  border-radius: 18px;
+  padding: 2.5rem 2rem;
+  min-width: 260px;
+  box-shadow: 0 2px 12px 0 rgba(46,93,161,0.06);
+  border-left: 5px solid #2e5da1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.register-user-container {
+  width: 50%;
+  min-width: 320px;
+  max-width: 500px;
+  margin: 0 auto;
+  margin-top: 50vh;
+  margin-bottom: 10vh;
+  background: rgba(46, 93, 161, 0.10);
+  border-radius: 18px;
+  padding: 2.5rem 2rem;
+  box-shadow: 0 2px 12px 0 rgba(46,93,161,0.06);
+}
+
+.form-group-email,
+.form-group-gender,
+.form-group-role,
+.form-group-password {
+  margin-left: 15px;
+}
+
+@media (max-width: 900px) {
+  .login-container {
+    flex-direction: column;
+    width: 95%;
+    gap: 1.5rem;
+  }
+  .login-section,
+  .register-section {
+    min-width: unset;
+    padding: 2rem 1rem;
+  }
+  .register-section {
+    border-left: none;
+    border-top: 5px solid #2e5da1;
+  }
+  .register-user-container {
+    width: 80%;
+    padding: 2rem 1rem;
+  }
+  .form-group-email,
+  .form-group-gender,
+  .form-group-role,
+  .form-group-password {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .login-container {
+    width: 100%;
+    gap: 1rem;
+  }
+  .login-section,
+  .register-section {
+    padding: 1.2rem 0.5rem;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+  .register-user-container {
+    width: 98%;
+    min-width: unset;
+    padding: 1.2rem 0.5rem;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+  .form-group-email,
+  .form-group-gender,
+  .form-group-role,
+  .form-group-password {
+    margin-left: 0;
+  }
+  .register-user-container h2 {
+    font-size: 1.3rem;
+  }
+}
