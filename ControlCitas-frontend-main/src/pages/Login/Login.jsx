@@ -5,6 +5,7 @@ import Swal from "sweetalert2";
 
 import RegisterForm from "../../components/RegisterForm/RegisterForm";
 import FaceRecognition from "../../components/FaceRecognition";
+import USBLogin from "../../components/USBLogin";
 import "../Register/styleRegister.css";
 
 const Login = () => {
@@ -12,6 +13,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showFaceLogin, setShowFaceLogin] = useState(false);
+  const [showUSBLogin, setShowUSBLogin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const apiUrl = import.meta.env.VITE_API_URL;
@@ -86,6 +88,22 @@ const Login = () => {
         text:
           error.response?.data?.message ||
           "No se pudo autenticar con reconocimiento facial",
+        icon: "error",
+        showConfirmButton: false,
+        timer: 3000,
+      });
+    }
+  };
+
+  const handleUSBLogin = async (usbData) => {
+    try {
+      // La autenticación USB no requiere MFA adicional
+      // ya que la USB física es considerada suficiente autenticación de doble factor
+      completeLogin(usbData);
+    } catch (error) {
+      Swal.fire({
+        title: "Error",
+        text: error.response?.data?.message || "Error al autenticar con USB",
         icon: "error",
         showConfirmButton: false,
         timer: 3000,
@@ -239,31 +257,52 @@ const Login = () => {
       <div className="login-container">
         <section className="login-section">
           <h2 className="text-center text-dark mb-3">
-            Iniciar sesión Version2FA
+            Iniciar sesión VersionUSB
           </h2>
 
-          {/* Botones para alternar entre login tradicional y facial */}
+          {/* Botones para alternar entre métodos de login */}
           <div className="d-flex justify-content-center mb-3">
             <div className="btn-group" role="group">
               <button
                 type="button"
                 className={`btn ${
-                  !showFaceLogin ? "btn-primary" : "btn-outline-primary"
+                  !showFaceLogin && !showUSBLogin
+                    ? "btn-primary"
+                    : "btn-outline-primary"
                 }`}
-                onClick={() => setShowFaceLogin(false)}
+                onClick={() => {
+                  setShowFaceLogin(false);
+                  setShowUSBLogin(false);
+                }}
               >
                 <i className="bi bi-envelope me-1"></i>
-                Email y contraseña
+                Email
               </button>
               <button
                 type="button"
                 className={`btn ${
                   showFaceLogin ? "btn-primary" : "btn-outline-primary"
                 }`}
-                onClick={() => setShowFaceLogin(true)}
+                onClick={() => {
+                  setShowFaceLogin(true);
+                  setShowUSBLogin(false);
+                }}
               >
                 <i className="bi bi-camera me-1"></i>
-                Reconocimiento facial
+                Facial
+              </button>
+              <button
+                type="button"
+                className={`btn ${
+                  showUSBLogin ? "btn-primary" : "btn-outline-primary"
+                }`}
+                onClick={() => {
+                  setShowFaceLogin(false);
+                  setShowUSBLogin(true);
+                }}
+              >
+                <i className="bi bi-usb-symbol me-1"></i>
+                USB
               </button>
             </div>
           </div>
@@ -272,7 +311,25 @@ const Login = () => {
             className="text-light border-b-3"
             style={{ textAlign: "center" }}
           >
-            {!showFaceLogin ? (
+            {showUSBLogin ? (
+              /* INICIO: Login con USB */
+              <div className="usb-login-section">
+                <USBLogin onUSBLogin={handleUSBLogin} />
+              </div>
+            ) : /* FIN: Login con USB */
+            showFaceLogin ? (
+              /* INICIO: Login con reconocimiento facial */
+              <div className="face-login-section">
+                <FaceRecognition
+                  onFaceRecognized={handleFaceRecognition}
+                  enableRecognize={true}
+                  enableRegister={false}
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
+                />
+              </div>
+            ) : (
+              /* FIN: Login con reconocimiento facial */
               /* INICIO: Login tradicional */
               <>
                 {!showMfaForm ? (
@@ -389,23 +446,11 @@ const Login = () => {
                   </div>
                 )}
               </>
-            ) : (
               /* FIN: Login tradicional */
-              /* INICIO: Login con reconocimiento facial */
-              <div className="face-login-section">
-                <FaceRecognition
-                  onFaceRecognized={handleFaceRecognition}
-                  enableRecognize={true}
-                  enableRegister={false}
-                  isLoading={isLoading}
-                  setIsLoading={setIsLoading}
-                />
-              </div>
-              /* FIN: Login con reconocimiento facial */
             )}
 
-            {/* Enlace para recuperar contraseña (solo en login tradicional) */}
-            {!showFaceLogin && !showMfaForm && (
+            {/* Enlace para recuperar contraseña (solo en login tradicional y no en 2FA) */}
+            {!showFaceLogin && !showUSBLogin && !showMfaForm && (
               <Link to="/forgot-password" className="d-block mt-2">
                 ¿Olvidaste tu contraseña?
               </Link>

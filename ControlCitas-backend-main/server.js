@@ -10,6 +10,7 @@ const userRoutes = require("./routes/userRoutes");
 const pacienteRoutes = require("./routes/pacienteRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const medicoRoutes = require("./routes/medicoRoutes");
+const usbRoutes = require("./routes/usbRoutes");
 
 const app = express();
 const upload = multer();
@@ -100,6 +101,7 @@ app.use("/api/usuarios", userRoutes);
 app.use("/api/pacientes", pacienteRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/medico", medicoRoutes);
+app.use("/api/usb", usbRoutes);
 
 // Manejo de errores global
 app.use((err, req, res, next) => {

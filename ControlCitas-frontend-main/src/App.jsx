@@ -30,6 +30,7 @@ import AutoLogout from "./components/AutoLogout";
 import ForgotPassword from "./pages/Login/ForgotPassword";
 
 import MFASetup from "./components/MFASetup";
+import ConfiguracionSeguridad from "./pages/ConfiguracionSeguridad";
 
 function AppContent() {
   const location = useLocation();
@@ -52,6 +53,14 @@ function AppContent() {
             element={
               <ProtectedRoute rolesPermitidos={["admin", "medico", "paciente"]}>
                 <MFASetup />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/configuracion-seguridad"
+            element={
+              <ProtectedRoute rolesPermitidos={["admin", "medico", "paciente"]}>
+                <ConfiguracionSeguridad />
               </ProtectedRoute>
             }
           />

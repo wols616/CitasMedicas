@@ -49,13 +49,18 @@ const NavbarApp = () => {
       align="end"
       style={{ fontWeight: "bold" }}
     >
+      <NavDropdown.Item as={Link} to="/configuracion-seguridad">
+        <i className="bi bi-shield-lock me-2"></i>
+        Configuración de Seguridad
+      </NavDropdown.Item>
+      <NavDropdown.Divider />
       <NavDropdown.Item as={Link} to="/cambiar-contrasena">
         Cambiar Contraseña
       </NavDropdown.Item>
       <NavDropdown.Item onClick={handleLogout}>Cerrar Sesión</NavDropdown.Item>
-      <NavDropdown.Item as={Link} to="/mfa-setup">
+      {/* <NavDropdown.Item as={Link} to="/mfa-setup">
         2FA
-      </NavDropdown.Item>
+      </NavDropdown.Item> */}
     </NavDropdown>
   );
 
