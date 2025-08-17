@@ -1,4 +1,9 @@
-import { BrowserRouter as Router, Route, Routes, useLocation } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import RegisterUser from "./pages/Register/RegisterUser";
 import Login from "./pages/Login/Login";
 import HomePaciente from "./pages/Home/Home_paciente";
@@ -22,16 +27,16 @@ import ExpedienteMedico from "./pages/Medico/ExpedienteMedico";
 import ContactosPaciente from "./pages/Paciente/ContactosPaciente";
 import ContactosPacienteAdmin from "./pages/Admin/ContactosPacienteAdmin";
 import AutoLogout from "./components/AutoLogout";
-import ForgotPassword from "./pages/Login/ForgotPassword"; // Agrega esta línea
+import ForgotPassword from "./pages/Login/ForgotPassword";
+
+import MFASetup from "./components/MFASetup";
 
 function AppContent() {
   const location = useLocation();
   const user = JSON.parse(localStorage.getItem("user"));
 
   const hideNavbar =
-    location.pathname === "/" ||
-    location.pathname === "/registerUser" ||
-    !user;
+    location.pathname === "/" || location.pathname === "/registerUser" || !user;
 
   return (
     <div className="d-flex flex-column min-vh-100">
@@ -40,8 +45,17 @@ function AppContent() {
         <Routes>
           <Route exact path="/" element={<Login />} />
           <Route path="/registerUser" element={<RegisterUser />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} /> {/* <-- Agrega esta línea */}
-
+          <Route path="/forgot-password" element={<ForgotPassword />} />{" "}
+          {/* ---------------------------------------------------------------------- */}
+          <Route
+            path="/mfa-setup"
+            element={
+              <ProtectedRoute rolesPermitidos={["admin", "medico", "paciente"]}>
+                <MFASetup />
+              </ProtectedRoute>
+            }
+          />
+          {/* //----------------------------------------------------------------------------- */}
           {/* Solo para pacientes */}
           <Route
             path="/home_paciente"
@@ -84,7 +98,6 @@ function AppContent() {
             }
           />
           <Route path="/cambiar-contrasena" element={<CambiarContrasena />} />
-
           {/* Rutas para admin */}
           <Route
             path="/home_admin"
@@ -142,7 +155,6 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-
           {/* Rutas para médico */}
           <Route
             path="/home_medico"

@@ -53,13 +53,15 @@ const NavbarApp = () => {
         Cambiar Contraseña
       </NavDropdown.Item>
       <NavDropdown.Item onClick={handleLogout}>Cerrar Sesión</NavDropdown.Item>
+      <NavDropdown.Item as={Link} to="/mfa-setup">
+        2FA
+      </NavDropdown.Item>
     </NavDropdown>
   );
 
   // Colores de la paleta
   const navBg = {
-    background:
-      "linear-gradient(90deg, #f5faff 60%, #e3eafc 100%)",
+    background: "linear-gradient(90deg, #f5faff 60%, #e3eafc 100%)",
   };
   const navLinkStyle = ({ isActive }) => ({
     color: isActive ? "#2e5da1" : "#4a4a4a",
@@ -87,34 +89,20 @@ const NavbarApp = () => {
               }}
               className="me-2"
             />
-            <span
-              style={{ color: "#2e5da1", fontWeight: "bold" }}
-            >
+            <span style={{ color: "#2e5da1", fontWeight: "bold" }}>
               Control Citas
             </span>
           </Navbar.Brand>
           <Navbar.Toggle aria-controls="basic-navbar-nav" />
           <Navbar.Collapse id="basic-navbar-nav">
             <Nav className="me-auto">
-              <Nav.Link
-                as={NavLink}
-                to="/admin/dashboard"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/admin/dashboard" style={navLinkStyle}>
                 Dashboard
               </Nav.Link>
-              <Nav.Link
-                as={NavLink}
-                to="/admin/usuarios"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/admin/usuarios" style={navLinkStyle}>
                 Gestión de Usuarios
               </Nav.Link>
-              <Nav.Link
-                as={NavLink}
-                to="/admin/medicos"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/admin/medicos" style={navLinkStyle}>
                 Gestión de Médicos
               </Nav.Link>
               <Nav.Link
@@ -155,48 +143,26 @@ const NavbarApp = () => {
               }}
               className="me-2"
             />
-            <span
-              style={{ color: "#2e5da1", fontWeight: "bold" }}
-            >
+            <span style={{ color: "#2e5da1", fontWeight: "bold" }}>
               Control Citas
             </span>
           </Navbar.Brand>
           <Navbar.Toggle aria-controls="basic-navbar-nav" />
           <Navbar.Collapse id="basic-navbar-nav">
             <Nav className="me-auto">
-              <Nav.Link
-                as={NavLink}
-                to="/home_paciente"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/home_paciente" style={navLinkStyle}>
                 Inicio
               </Nav.Link>
-              <Nav.Link
-                as={NavLink}
-                to="/agendar-cita"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/agendar-cita" style={navLinkStyle}>
                 Agendar Cita
               </Nav.Link>
-              <Nav.Link
-                as={NavLink}
-                to="/mis-citas"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/mis-citas" style={navLinkStyle}>
                 Mis Citas
               </Nav.Link>
-              <Nav.Link
-                as={NavLink}
-                to="/expediente"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/expediente" style={navLinkStyle}>
                 Expediente
               </Nav.Link>
-              <Nav.Link
-                as={NavLink}
-                to="/mis-contactos"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/mis-contactos" style={navLinkStyle}>
                 Mis Contactos
               </Nav.Link>
             </Nav>
@@ -230,11 +196,7 @@ const NavbarApp = () => {
           <Navbar.Toggle aria-controls="basic-navbar-nav" />
           <Navbar.Collapse id="basic-navbar-nav">
             <Nav className="me-auto">
-              <Nav.Link
-                as={NavLink}
-                to="/home_medico"
-                style={navLinkStyle}
-              >
+              <Nav.Link as={NavLink} to="/home_medico" style={navLinkStyle}>
                 Inicio
               </Nav.Link>
               <Nav.Link as={NavLink} to="/medico/citas" style={navLinkStyle}>
@@ -243,7 +205,11 @@ const NavbarApp = () => {
               <Nav.Link as={NavLink} to="/medico/horario" style={navLinkStyle}>
                 Mi Horario
               </Nav.Link>
-              <Nav.Link as={NavLink} to="/medico/expediente" style={navLinkStyle}>
+              <Nav.Link
+                as={NavLink}
+                to="/medico/expediente"
+                style={navLinkStyle}
+              >
                 Expedientes
               </Nav.Link>
             </Nav>

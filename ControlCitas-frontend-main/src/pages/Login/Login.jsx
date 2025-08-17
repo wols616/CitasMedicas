@@ -16,6 +16,12 @@ const Login = () => {
   const navigate = useNavigate();
   const apiUrl = import.meta.env.VITE_API_URL;
 
+  //-----------------------------------------------------------------
+  const [mfaToken, setMfaToken] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [showMfaForm, setShowMfaForm] = useState(false);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+
   const handleFaceRecognition = async (faceData) => {
     if (faceData.name === "Desconocido") {
       Swal.fire({
@@ -106,43 +112,51 @@ const Login = () => {
         contrasena: password,
       })
       .then((response) => {
-        Swal.fire({
-          title: "Bienvenido",
-          text: "Inicio de sesión exitoso",
-          icon: "success",
-          showConfirmButton: false,
-          timer: 2000,
-        });
-
-        // Guarda el usuario en localStorage
-        localStorage.setItem("user", JSON.stringify(response.data.user));
-
-        // Guarda datos de medico o paciente si existen
-        if (response.data.medico) {
-          localStorage.setItem("medico", JSON.stringify(response.data.medico));
-        } else {
-          localStorage.removeItem("medico");
-        }
-        if (response.data.paciente) {
-          localStorage.setItem(
-            "paciente",
-            JSON.stringify(response.data.paciente)
-          );
-        } else {
-          localStorage.removeItem("paciente");
+        if (response.data.mfa_required) {
+          setMfaToken(response.data.mfaToken);
+          setShowMfaForm(true);
+          return;
         }
 
-        // Redirige según el rol
-        const rol = response.data.user.rol;
-        if (rol === "admin") {
-          navigate("/home_admin");
-        } else if (rol === "paciente") {
-          navigate("/home_paciente");
-        } else if (rol === "medico") {
-          navigate("/home_medico");
-        } else {
-          navigate("/");
-        }
+        completeLogin(response.data);
+
+        // Swal.fire({
+        //   title: "Bienvenido",
+        //   text: "Inicio de sesión exitoso",
+        //   icon: "success",
+        //   showConfirmButton: false,
+        //   timer: 2000,
+        // });
+
+        // // Guarda el usuario en localStorage
+        // localStorage.setItem("user", JSON.stringify(response.data.user));
+
+        // // Guarda datos de medico o paciente si existen
+        // if (response.data.medico) {
+        //   localStorage.setItem("medico", JSON.stringify(response.data.medico));
+        // } else {
+        //   localStorage.removeItem("medico");
+        // }
+        // if (response.data.paciente) {
+        //   localStorage.setItem(
+        //     "paciente",
+        //     JSON.stringify(response.data.paciente)
+        //   );
+        // } else {
+        //   localStorage.removeItem("paciente");
+        // }
+
+        // // Redirige según el rol
+        // const rol = response.data.user.rol;
+        // if (rol === "admin") {
+        //   navigate("/home_admin");
+        // } else if (rol === "paciente") {
+        //   navigate("/home_paciente");
+        // } else if (rol === "medico") {
+        //   navigate("/home_medico");
+        // } else {
+        //   navigate("/");
+        // }
       })
       .catch((error) => {
         Swal.fire({
@@ -155,11 +169,78 @@ const Login = () => {
       });
   };
 
+  const verifyMfaCode = () => {
+    setIsLoading(true);
+    axios
+      .post(`${apiUrl}/api/usuarios/mfa-verify-login`, {
+        mfaToken,
+        token: mfaCode,
+      })
+      .then((response) => {
+        completeLogin(response.data);
+      })
+      .catch((error) => {
+        Swal.fire({
+          title: "Error",
+          text: error.response?.data?.message || "Código 2FA inválido",
+          icon: "error",
+          showConfirmButton: false,
+          timer: 3000,
+        });
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  };
+
+  const completeLogin = (data) => {
+    Swal.fire({
+      title: "Bienvenido",
+      text: "Inicio de sesión exitoso",
+      icon: "success",
+      showConfirmButton: false,
+      timer: 2000,
+    });
+
+    localStorage.setItem("user", JSON.stringify(data.user));
+
+    // Guarda datos de medico o paciente si existen
+    if (data.medico) {
+      localStorage.setItem("medico", JSON.stringify(data.medico));
+    } else {
+      localStorage.removeItem("medico");
+    }
+    if (data.paciente) {
+      localStorage.setItem("paciente", JSON.stringify(data.paciente));
+    } else {
+      localStorage.removeItem("paciente");
+    }
+
+    // Redirige según el rol
+    const rol = data.user.rol;
+    if (rol === "admin") {
+      navigate("/home_admin");
+    } else if (rol === "paciente") {
+      navigate("/home_paciente");
+    } else if (rol === "medico") {
+      navigate("/home_medico");
+    } else {
+      navigate("/");
+    }
+  };
+
+  const cambiarARecuperacion = () => {
+    setUseRecoveryCode(!useRecoveryCode);
+    setMfaCode(""); // Limpiar el código actual
+  };
+
   return (
     <div className="fondo">
       <div className="login-container">
         <section className="login-section">
-          <h2 className="text-center text-dark mb-3">Iniciar sesión</h2>
+          <h2 className="text-center text-dark mb-3">
+            Iniciar sesión Version2FA
+          </h2>
 
           {/* Botones para alternar entre login tradicional y facial */}
           <div className="d-flex justify-content-center mb-3">
@@ -192,56 +273,125 @@ const Login = () => {
             style={{ textAlign: "center" }}
           >
             {!showFaceLogin ? (
-              // Login tradicional
-              <form onSubmit={handleLogin}>
-                <input
-                  className="form-control mb-3"
-                  style={{ height: "43px" }}
-                  type="text"
-                  placeholder="Correo electrónico"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <div className="input-group mb-4">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    className="form-control"
-                    placeholder="Contraseña"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <span
-                    className="input-group-text"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    {showPassword ? (
-                      <i className="bi bi-eye-slash-fill fs-5 text-primary"></i>
-                    ) : (
-                      <i className="bi bi-eye-fill fs-5 text-primary"></i>
-                    )}
-                  </span>
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn-primary fw-bold px-4 mb-2"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
+              /* INICIO: Login tradicional */
+              <>
+                {!showMfaForm ? (
+                  /* Formulario normal de email/contraseña */
+                  <form onSubmit={handleLogin}>
+                    <input
+                      className="form-control mb-3"
+                      style={{ height: "43px" }}
+                      type="text"
+                      placeholder="Correo electrónico"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                    <div className="input-group mb-4">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        className="form-control"
+                        placeholder="Contraseña"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
                       <span
-                        className="spinner-border spinner-border-sm me-2"
-                        role="status"
-                      ></span>
-                      Accediendo...
-                    </>
-                  ) : (
-                    "Acceder"
-                  )}
-                </button>
-              </form>
+                        className="input-group-text"
+                        onClick={() => setShowPassword(!showPassword)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {showPassword ? (
+                          <i className="bi bi-eye-slash-fill fs-5 text-primary"></i>
+                        ) : (
+                          <i className="bi bi-eye-fill fs-5 text-primary"></i>
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      type="submit"
+                      className="btn btn-primary fw-bold px-4 mb-2"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <>
+                          <span
+                            className="spinner-border spinner-border-sm me-2"
+                            role="status"
+                          ></span>
+                          Accediendo...
+                        </>
+                      ) : (
+                        "Acceder"
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  /* Formulario de verificación 2FA */
+                  <div className="mfa-verification">
+                    <h5 className="text-dark mb-3">
+                      Verificación en Dos Pasos
+                    </h5>
+                    <p className="text-muted mb-4">
+                      {useRecoveryCode
+                        ? "Ingresa un código de recuperación de 10 caracteres"
+                        : "Ingresa el código de 6 dígitos de tu aplicación de autenticación"}
+                    </p>
+
+                    <div className="mfa-code-input mb-4">
+                      <input
+                        type="text"
+                        id="mfaCode"
+                        className="form-control text-center"
+                        style={{
+                          fontSize: "1.5rem",
+                          letterSpacing: "0.5em",
+                          paddingRight: "0.5em",
+                        }}
+                        value={mfaCode}
+                        onChange={(e) =>
+                          setMfaCode(e.target.value.toUpperCase())
+                        }
+                        maxLength={useRecoveryCode ? "10" : "6"}
+                        placeholder={useRecoveryCode ? "----------" : "------"}
+                      />
+                    </div>
+
+                    <button
+                      onClick={verifyMfaCode}
+                      className="btn btn-primary w-100 mb-3"
+                      disabled={
+                        isLoading ||
+                        (useRecoveryCode
+                          ? mfaCode.length !== 10
+                          : mfaCode.length !== 6)
+                      }
+                    >
+                      {isLoading ? (
+                        <>
+                          <span
+                            className="spinner-border spinner-border-sm me-2"
+                            role="status"
+                          ></span>
+                          Verificando...
+                        </>
+                      ) : (
+                        "Verificar"
+                      )}
+                    </button>
+
+                    <button
+                      className="btn btn-outline-primary"
+                      onClick={cambiarARecuperacion}
+                    >
+                      {useRecoveryCode
+                        ? "Usar código de autenticación"
+                        : "Usar código de recuperación"}
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
-              // Login con reconocimiento facial
+              /* FIN: Login tradicional */
+              /* INICIO: Login con reconocimiento facial */
               <div className="face-login-section">
                 <FaceRecognition
                   onFaceRecognized={handleFaceRecognition}
@@ -251,23 +401,29 @@ const Login = () => {
                   setIsLoading={setIsLoading}
                 />
               </div>
+              /* FIN: Login con reconocimiento facial */
             )}
 
-            {!showFaceLogin && (
+            {/* Enlace para recuperar contraseña (solo en login tradicional) */}
+            {!showFaceLogin && !showMfaForm && (
               <Link to="/forgot-password" className="d-block mt-2">
                 ¿Olvidaste tu contraseña?
               </Link>
             )}
           </div>
         </section>
-        <section className="register-section text-center">
-          <h4 className="text-dark">¿No tienes cuenta?</h4>
-          <Link to="/registerUser">
-            <button className="btn btn-primary fw-bold px-4 mt-4">
-              Registrarse
-            </button>
-          </Link>
-        </section>
+
+        {/* Sección de registro (solo visible cuando no está en 2FA) */}
+        {!showMfaForm && (
+          <section className="register-section text-center">
+            <h4 className="text-dark">¿No tienes cuenta?</h4>
+            <Link to="/registerUser">
+              <button className="btn btn-primary fw-bold px-4 mt-4">
+                Registrarse
+              </button>
+            </Link>
+          </section>
+        )}
       </div>
     </div>
   );

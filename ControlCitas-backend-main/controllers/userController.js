@@ -2,6 +2,57 @@ const db = require("../config/db");
 const bcrypt = require("bcryptjs"); //Libreria para encriptar contraseñas
 const nodemailer = require("nodemailer");
 
+//-----------Authenticator-----------------
+const speakeasy = require("speakeasy");
+const QRCode = require("qrcode");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+
+const ENC_KEY = crypto.scryptSync(
+  process.env.MFA_ENC_KEY || "fallback_key",
+  "salt",
+  32
+);
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", ENC_KEY, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(text, "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString(
+    "hex"
+  )}`;
+}
+
+function decrypt(payload) {
+  const parts = payload.split(":");
+  if (parts.length !== 3) throw new Error("invalid encrypted string");
+  const iv = Buffer.from(parts[0], "hex");
+  const tag = Buffer.from(parts[1], "hex");
+  const data = Buffer.from(parts[2], "hex");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", ENC_KEY, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+function generarRecoveryCodes(n = 8) {
+  const codes = [];
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sin ambiguedad
+  for (let i = 0; i < n; i++) {
+    let c = "";
+    for (let j = 0; j < 10; j++)
+      c += chars[Math.floor(Math.random() * chars.length)];
+    codes.push(c);
+  }
+  return codes;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -60,6 +111,443 @@ function generarPasswordSeguro(length = 15) {
   }
   return password.sort(() => Math.random() - 0.5).join("");
 }
+
+//-----------------------------------------------Authenticator
+exports.mfaSetup = (req, res) => {
+  const { id_usuario } = req.body;
+  if (!id_usuario)
+    return res.status(400).json({ message: "id_usuario requerido" });
+
+  // 1) obtener correo para nombre en la app (opcional)
+  db.query(
+    "SELECT correo FROM usuario WHERE id_usuario = ?",
+    [id_usuario],
+    async (err, results) => {
+      if (err) return res.status(500).json({ message: "DB error" });
+      if (results.length === 0)
+        return res.status(404).json({ message: "Usuario no encontrado" });
+
+      const correo = results[0].correo;
+      const secret = speakeasy.generateSecret({
+        length: 20,
+        name: `Clínica Johnson (${correo})`,
+      });
+
+      try {
+        const qrDataUrl = await QRCode.toDataURL(secret.otpauth_url);
+        const encTemp = encrypt(secret.base32);
+
+        db.query(
+          "UPDATE usuario SET mfa_temp_secret = ? WHERE id_usuario = ?",
+          [encTemp, id_usuario],
+          (err2) => {
+            if (err2)
+              return res
+                .status(500)
+                .json({ message: "Error guardando temp secret" });
+            // Devuelve QR + secret (manual) para que el usuario lo copie si quiere
+            res.json({ qr: qrDataUrl, manualCode: secret.base32 });
+          }
+        );
+      } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Error generando QR" });
+      }
+    }
+  );
+};
+
+exports.checkMFAStatus = (req, res) => {
+  const { id_usuario } = req.body;
+
+  if (!id_usuario) {
+    return res.status(400).json({ message: "id_usuario requerido" });
+  }
+
+  db.query(
+    "SELECT mfa_enabled FROM usuario WHERE id_usuario = ?",
+    [id_usuario],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: "Error en base de datos" });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+
+      res.json({
+        mfaEnabled: results[0].mfa_enabled === 1,
+      });
+    }
+  );
+};
+
+exports.mfaVerifySetup = async (req, res) => {
+  const { id_usuario, token } = req.body;
+  if (!id_usuario || !token)
+    return res
+      .status(400)
+      .json({ message: "id_usuario y token son obligatorios" });
+
+  db.query(
+    "SELECT mfa_temp_secret FROM usuario WHERE id_usuario = ?",
+    [id_usuario],
+    async (err, results) => {
+      if (err) return res.status(500).json({ message: "DB error" });
+      if (results.length === 0 || !results[0].mfa_temp_secret) {
+        return res
+          .status(400)
+          .json({ message: "No hay un enrolamiento iniciado" });
+      }
+      try {
+        const base32 = decrypt(results[0].mfa_temp_secret);
+        const verified = speakeasy.totp.verify({
+          secret: base32,
+          encoding: "base32",
+          token,
+          window: 1,
+        });
+        if (!verified)
+          return res.status(400).json({ message: "Código inválido" });
+
+        // Generar códigos de recuperación y hashearlos
+        const recoveryPlain = generarRecoveryCodes(8);
+        const hashedArr = await Promise.all(
+          recoveryPlain.map((rc) => bcrypt.hash(rc, 10))
+        );
+        const hashedJson = JSON.stringify(hashedArr);
+
+        // Promover temp -> permanent y guardar recovery codes (hasheados)
+        db.query(
+          "UPDATE usuario SET mfa_secret = ?, mfa_temp_secret = NULL, mfa_enabled = 1, mfa_recovery_codes = ? WHERE id_usuario = ?",
+          [results[0].mfa_temp_secret, hashedJson, id_usuario],
+          (err2) => {
+            if (err2)
+              return res.status(500).json({ message: "Error activando MFA" });
+            // Devuelve los códigos de recuperación *en texto plano una vez*.
+            res.json({ message: "MFA activado", recoveryCodes: recoveryPlain });
+          }
+        );
+      } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Error verificando token" });
+      }
+    }
+  );
+};
+
+// ...existing code...
+
+exports.mfaVerifyLogin = (req, res) => {
+  const { mfaToken, token } = req.body;
+  if (!mfaToken || !token)
+    return res
+      .status(400)
+      .json({ message: "mfaToken y token son obligatorios" });
+
+  try {
+    const decoded = jwt.verify(mfaToken, process.env.JWT_SECRET);
+    const userId = decoded.sub;
+
+    db.query(
+      "SELECT mfa_secret, mfa_recovery_codes, mfa_used_recovery_codes FROM usuario WHERE id_usuario = ?",
+      [userId],
+      async (err, results) => {
+        if (err) return res.status(500).json({ message: "DB error" });
+        if (results.length === 0)
+          return res.status(404).json({ message: "Usuario no encontrado" });
+
+        const encSecret = results[0].mfa_secret;
+        if (!encSecret)
+          return res
+            .status(400)
+            .json({ message: "MFA no configurado para este usuario" });
+
+        const base32 = decrypt(encSecret);
+        let isOtpOk = speakeasy.totp.verify({
+          secret: base32,
+          encoding: "base32",
+          token,
+          window: 1,
+        });
+
+        let usedRecoveryIndex = -1;
+
+        // Si falla el OTP, intentar como recovery code
+        if (!isOtpOk && results[0].mfa_recovery_codes) {
+          try {
+            const recoveryCodes = JSON.parse(results[0].mfa_recovery_codes);
+            const usedCodes = results[0].mfa_used_recovery_codes ? 
+              JSON.parse(results[0].mfa_used_recovery_codes) : [];
+            
+            // Comprobar si 'token' coincide con alguno (hashes)
+            for (let i = 0; i < recoveryCodes.length; i++) {
+              if (usedCodes.includes(i)) continue; // Saltar códigos ya usados
+              
+              const match = await bcrypt.compare(token, recoveryCodes[i]);
+              if (match) {
+                // Marcar este código como usado
+                usedCodes.push(i);
+                const newUsedJson = JSON.stringify(usedCodes);
+                
+                db.query(
+                  "UPDATE usuario SET mfa_used_recovery_codes = ? WHERE id_usuario = ?",
+                  [newUsedJson, userId],
+                  () => {}
+                );
+                
+                isOtpOk = true;
+                usedRecoveryIndex = i;
+                break;
+              }
+            }
+          } catch (e) {
+            /* ignore parse errors */
+          }
+        }
+
+        if (!isOtpOk)
+          return res.status(401).json({ message: "Código MFA inválido" });
+
+        // Generar token de sesión / acceso final
+        const accessToken = jwt.sign({ sub: userId }, process.env.JWT_SECRET, {
+          expiresIn: "8h",
+        });
+
+        // Devolver user y token
+        db.query(
+          "SELECT id_usuario, nombres, apellidos, correo, rol FROM usuario WHERE id_usuario = ?",
+          [userId],
+          (err2, userRes) => {
+            if (err2) return res.status(500).json({ message: "DB error" });
+            const user = userRes[0];
+            
+            let message = "Inicio de sesión completo";
+            if (usedRecoveryIndex >= 0) {
+              message += ` (usado código de recuperación #${usedRecoveryIndex + 1})`;
+            }
+            
+            res.json({
+              message,
+              user,
+              accessToken,
+            });
+          }
+        );
+      }
+    );
+  } catch (e) {
+    return res.status(401).json({ message: "mfaToken inválido o expirado" });
+  }
+};
+
+
+// exports.mfaVerifyLogin = (req, res) => {
+//   const { mfaToken, token } = req.body;
+//   if (!mfaToken || !token)
+//     return res
+//       .status(400)
+//       .json({ message: "mfaToken y token son obligatorios" });
+
+//   try {
+//     const decoded = jwt.verify(mfaToken, process.env.JWT_SECRET);
+//     const userId = decoded.sub;
+
+//     db.query(
+//       "SELECT mfa_secret, mfa_recovery_codes FROM usuario WHERE id_usuario = ?",
+//       [userId],
+//       async (err, results) => {
+//         if (err) return res.status(500).json({ message: "DB error" });
+//         if (results.length === 0)
+//           return res.status(404).json({ message: "Usuario no encontrado" });
+
+//         const encSecret = results[0].mfa_secret;
+//         if (!encSecret)
+//           return res
+//             .status(400)
+//             .json({ message: "MFA no configurado para este usuario" });
+
+//         const base32 = decrypt(encSecret);
+//         const isOtpOk = speakeasy.totp.verify({
+//           secret: base32,
+//           encoding: "base32",
+//           token,
+//           window: 1,
+//         });
+
+//         // Si falla el OTP, intentar como recovery code
+//         let recoveryCodes = [];
+//         if (!isOtpOk && results[0].mfa_recovery_codes) {
+//           try {
+//             recoveryCodes = JSON.parse(results[0].mfa_recovery_codes);
+//             // comprobar si 'token' coincide con alguno (hashes)
+//             for (let i = 0; i < recoveryCodes.length; i++) {
+//               const match = await bcrypt.compare(token, recoveryCodes[i]);
+//               if (match) {
+//                 // aceptar este recovery code y eliminarlo de la lista
+//                 recoveryCodes.splice(i, 1);
+//                 const newJson = JSON.stringify(recoveryCodes);
+//                 db.query(
+//                   "UPDATE usuario SET mfa_recovery_codes = ? WHERE id_usuario = ?",
+//                   [newJson, userId],
+//                   () => {}
+//                 );
+//                 // marcar como válido y salir del bucle
+//                 // (no break necesario si retornamos luego)
+//                 isOtpOk = true;
+//                 break;
+//               }
+//             }
+//           } catch (e) {
+//             /* ignore parse errors */
+//           }
+//         }
+
+//         if (!isOtpOk)
+//           return res.status(401).json({ message: "Código MFA inválido" });
+
+//         // Generar token de sesión / acceso final
+//         const accessToken = jwt.sign({ sub: userId }, process.env.JWT_SECRET, {
+//           expiresIn: "8h",
+//         });
+
+//         // Devolver user y token (puedes adaptar datos que devuelves)
+//         db.query(
+//           "SELECT id_usuario, nombres, apellidos, correo, rol FROM usuario WHERE id_usuario = ?",
+//           [userId],
+//           (err2, userRes) => {
+//             if (err2) return res.status(500).json({ message: "DB error" });
+//             const user = userRes[0];
+//             res.json({
+//               message: "Inicio de sesión completo",
+//               user,
+//               accessToken,
+//             });
+//           }
+//         );
+//       }
+//     );
+//   } catch (e) {
+//     return res.status(401).json({ message: "mfaToken inválido o expirado" });
+//   }
+// };
+
+
+exports.getMFARecoveryCodes = (req, res) => {
+  const { id_usuario } = req.body;
+
+  if (!id_usuario) {
+    return res.status(400).json({ message: "id_usuario requerido" });
+  }
+
+  db.query(
+    "SELECT mfa_recovery_codes, mfa_used_recovery_codes FROM usuario WHERE id_usuario = ?",
+    [id_usuario],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: "Error en base de datos" });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+
+      const user = results[0];
+      
+      if (!user.mfa_recovery_codes) {
+        return res.status(400).json({ message: "No hay códigos de recuperación configurados" });
+      }
+
+      try {
+        const recoveryCodes = JSON.parse(user.mfa_recovery_codes);
+        const usedCodes = user.mfa_used_recovery_codes ? 
+          JSON.parse(user.mfa_used_recovery_codes) : [];
+
+        // Enmascarar los códigos por seguridad (mostrar solo primeros y últimos caracteres)
+        const maskedCodes = recoveryCodes.map((code, index) => {
+          // Para códigos hasheados, solo mostramos el índice y si está usado
+          const isUsed = usedCodes.includes(index);
+          return {
+            index: index + 1,
+            code: `****-****-${String(index + 1).padStart(2, '0')}`, // Código enmascarado
+            isUsed: isUsed,
+            status: isUsed ? 'Usado' : 'Disponible'
+          };
+        });
+
+        res.json({
+          totalCodes: recoveryCodes.length,
+          availableCodes: recoveryCodes.length - usedCodes.length,
+          usedCodes: usedCodes.length,
+          codes: maskedCodes
+        });
+
+      } catch (parseError) {
+        res.status(500).json({ message: "Error procesando códigos de recuperación" });
+      }
+    }
+  );
+};
+
+exports.regenerateMFARecoveryCodes = async (req, res) => {
+  const { id_usuario } = req.body;
+
+  if (!id_usuario) {
+    return res.status(400).json({ message: "id_usuario requerido" });
+  }
+
+  // Verificar que el usuario existe y tiene MFA habilitado
+  db.query(
+    "SELECT mfa_enabled FROM usuario WHERE id_usuario = ?",
+    [id_usuario],
+    async (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: "Error en base de datos" });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+
+      if (results[0].mfa_enabled !== 1) {
+        return res.status(400).json({ message: "MFA no está habilitado para este usuario" });
+      }
+
+      try {
+        // Generar nuevos códigos de recuperación
+        const newRecoveryPlain = generarRecoveryCodes(6); // 6 nuevos códigos
+        const hashedArr = await Promise.all(
+          newRecoveryPlain.map((rc) => bcrypt.hash(rc, 10))
+        );
+        const hashedJson = JSON.stringify(hashedArr);
+
+        // Actualizar en la base de datos y limpiar códigos usados
+        db.query(
+          "UPDATE usuario SET mfa_recovery_codes = ?, mfa_used_recovery_codes = NULL WHERE id_usuario = ?",
+          [hashedJson, id_usuario],
+          (err2) => {
+            if (err2) {
+              return res.status(500).json({ message: "Error regenerando códigos" });
+            }
+
+            res.json({
+              message: "Códigos de recuperación regenerados exitosamente",
+              newRecoveryCodes: newRecoveryPlain,
+              totalCodes: newRecoveryPlain.length
+            });
+          }
+        );
+
+      } catch (error) {
+        console.error("Error regenerando códigos:", error);
+        res.status(500).json({ message: "Error regenerando códigos de recuperación" });
+      }
+    }
+  );
+};
+
+//-----------------------------------------------
 
 exports.registerUser = (req, res) => {
   const {
@@ -194,6 +682,23 @@ exports.loginUser = (req, res) => {
           .status(500)
           .json({ message: "Error al comparar la contraseña" });
       }
+
+      //-------------------------------------------------------------------------
+      if (user.mfa_enabled === 1) {
+        // crea token corto que indica "login pendiente MFA"
+        const mfaToken = jwt.sign(
+          { sub: user.id_usuario, mfa: true },
+          process.env.JWT_SECRET,
+          { expiresIn: "5m" }
+        );
+        return res.json({
+          message: "MFA required",
+          mfa_required: true,
+          mfaToken,
+          user,
+        });
+      }
+      //---------------------------------------------------------------------------
 
       if (!isMatch) {
         return res
