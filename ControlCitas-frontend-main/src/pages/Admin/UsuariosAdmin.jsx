@@ -15,18 +15,20 @@ const UsuariosAdmin = () => {
     telefono: "",
     correo: "",
     sexo: "",
-    rol: "admin",
+    rol: "",
     contrasena: "",
   });
   const [editId, setEditId] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-
-  // Filtros de búsqueda
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [confirmationCode, setConfirmationCode] = useState("");
+  const [pendingAction, setPendingAction] = useState(null);
+  const [pendingActionType, setPendingActionType] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(300);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [busquedaId, setBusquedaId] = useState("");
   const [filtroRol, setFiltroRol] = useState("todos");
-
-  // Declara la variable de entorno para la URL
   const apiUrl = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
@@ -35,12 +37,25 @@ const UsuariosAdmin = () => {
 
   const fetchUsuarios = () => {
     axios
-      .get(`${apiUrl}/api/admin/usuarios`)
+      .get(`${apiUrl}/api/admin/usuarios`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      })
       .then((res) => setUsuarios(res.data))
       .catch(() => setUsuarios([]));
   };
 
-  // Filtrado en frontend
+  useEffect(() => {
+    if (!showConfirmationModal || timeLeft <= 0) return;
+
+    const timer = setTimeout(() => {
+      setTimeLeft(timeLeft - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [showConfirmationModal, timeLeft]);
+
   const usuariosFiltrados = usuarios.filter((usuario) => {
     const coincideBusqueda =
       busqueda.trim() === "" ||
@@ -69,6 +84,145 @@ const UsuariosAdmin = () => {
     });
   };
 
+  const requestConfirmation = async (actionType, data) => {
+    try {
+      setIsLoading(true);
+
+      // Para editar usamos editId, para eliminar usamos data.id_usuario
+      const userId = actionType === "editar" ? editId : data.id_usuario;
+
+      // Obtener correo del admin desde localStorage
+      const user = JSON.parse(localStorage.getItem("user"));
+      const adminCorreo = user?.correo;
+
+      if (!adminCorreo) {
+        Swal.fire(
+          "Error",
+          "No se pudo obtener el correo del administrador",
+          "error"
+        );
+        return;
+      }
+
+      const response = await axios.post(
+        `${apiUrl}/api/admin/usuarios/${userId}/solicitarConfirmacion`,
+        {
+          operacion: actionType,
+          datos: { ...data, id_usuario: userId },
+          adminCorreo: adminCorreo,
+        },
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        }
+      );
+
+      if (response.data.requiereConfirmacion) {
+        if (actionType === "eliminar") {
+          setPendingDeleteId(userId);
+          setPendingActionType("eliminar");
+        } else {
+          setPendingActionType("editar");
+        }
+        setShowConfirmationModal(true);
+        setTimeLeft(300);
+      }
+    } catch (err) {
+      Swal.fire(
+        "Error",
+        err.response?.data?.message ||
+          "No se pudo enviar el código de confirmación",
+        "error"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditConfirm = async () => {
+    try {
+      setIsLoading(true);
+      const { contrasena, ...editData } = form;
+
+      // Obtener correo del admin desde localStorage
+      const user = JSON.parse(localStorage.getItem("user"));
+      const adminCorreo = user?.correo;
+
+      await axios.put(
+        `${apiUrl}/api/admin/usuarios/${editId}`,
+        {
+          ...editData,
+          codigoConfirmacion: confirmationCode,
+          adminCorreo: adminCorreo,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      Swal.fire("¡Actualizado!", "Usuario actualizado.", "success");
+      setForm({
+        nombres: "",
+        apellidos: "",
+        direccion: "",
+        telefono: "",
+        correo: "",
+        sexo: "",
+        rol: "",
+        contrasena: "",
+      });
+      setEditId(null);
+      fetchUsuarios();
+    } catch (err) {
+      Swal.fire(
+        "Error",
+        err.response?.data?.message || "No se pudo actualizar",
+        "error"
+      );
+    } finally {
+      setIsLoading(false);
+      setShowConfirmationModal(false);
+      setConfirmationCode("");
+      setPendingActionType(null);
+    }
+  };
+
+  const handleDeleteConfirm = async (id) => {
+    try {
+      setIsLoading(true);
+
+      // Obtener correo del admin desde localStorage
+      const user = JSON.parse(localStorage.getItem("user"));
+      const adminCorreo = user?.correo;
+
+      await axios.delete(`${apiUrl}/api/admin/usuarios/${id}`, {
+        data: {
+          codigoConfirmacion: confirmationCode,
+          adminCorreo: adminCorreo,
+        },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      Swal.fire("Eliminado", "Usuario eliminado.", "success");
+      fetchUsuarios();
+    } catch (err) {
+      Swal.fire(
+        "Error",
+        err.response?.data?.message || "No se pudo eliminar",
+        "error"
+      );
+    } finally {
+      setIsLoading(false);
+      setShowConfirmationModal(false);
+      setConfirmationCode("");
+      setPendingDeleteId(null);
+      setPendingActionType(null);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (
@@ -86,11 +240,10 @@ const UsuariosAdmin = () => {
       return;
     }
 
-    // Validar si quiere registrar rostro pero no lo ha hecho (solo para nuevos usuarios)
     if (!editId && registerFace && !faceRegistered) {
       Swal.fire({
         title: "Rostro no registrado",
-        text: "Has marcado que quieres registrar el rostro, pero aún no lo has hecho. Por favor registra el rostro o desmarca la opción.",
+        text: "Has marcado que quieres registrar el rostro, pero aún no lo has hecho.",
         icon: "warning",
         showConfirmButton: false,
         timer: 4000,
@@ -98,52 +251,43 @@ const UsuariosAdmin = () => {
       return;
     }
 
-    try {
-      setIsLoading(true);
-      if (editId) {
-        // Editar usuario (sin contraseña ni rol)
-        const { contrasena, rol, ...editData } = form;
-        await axios.put(`${apiUrl}/api/admin/usuarios/${editId}`, editData);
-        Swal.fire("¡Actualizado!", "Usuario actualizado.", "success");
-      } else {
-        // Crear solo usuario admin
-        if (form.rol !== "admin") {
-          Swal.fire(
-            "Error",
-            "Solo puedes crear usuarios con rol admin.",
-            "error"
-          );
-          return;
-        }
-        await axios.post(`${apiUrl}/api/admin/usuarios`, form);
+    if (editId) {
+      requestConfirmation("editar", form);
+    } else {
+      try {
+        setIsLoading(true);
+        await axios.post(`${apiUrl}/api/admin/usuarios`, form, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        });
         const mensaje =
           registerFace && faceRegistered
-            ? "Usuario admin registrado con reconocimiento facial."
-            : "Usuario admin registrado.";
+            ? `Usuario ${form.rol} registrado con reconocimiento facial.`
+            : `Usuario ${form.rol} registrado.`;
         Swal.fire("¡Agregado!", mensaje, "success");
+        setForm({
+          nombres: "",
+          apellidos: "",
+          direccion: "",
+          telefono: "",
+          correo: "",
+          sexo: "",
+          rol: "",
+          contrasena: "",
+        });
+        setRegisterFace(true);
+        setFaceRegistered(false);
+        fetchUsuarios();
+      } catch (err) {
+        Swal.fire(
+          "Error",
+          err.response?.data?.message || "No se pudo guardar",
+          "error"
+        );
+      } finally {
+        setIsLoading(false);
       }
-      setForm({
-        nombres: "",
-        apellidos: "",
-        direccion: "",
-        telefono: "",
-        correo: "",
-        sexo: "",
-        rol: "admin",
-        contrasena: "",
-      });
-      setEditId(null);
-      setRegisterFace(true);
-      setFaceRegistered(false);
-      fetchUsuarios();
-    } catch (err) {
-      Swal.fire(
-        "Error",
-        err.response?.data?.message || "No se pudo guardar",
-        "error"
-      );
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -162,34 +306,16 @@ const UsuariosAdmin = () => {
   };
 
   const handleDelete = async (id, rol) => {
-    if (rol !== "admin") {
-      Swal.fire(
-        "Acción no permitida",
-        "Solo puedes eliminar usuarios admin.",
-        "warning"
-      );
-      return;
-    }
     Swal.fire({
-      title: "¿Eliminar usuario admin?",
+      title: `¿Eliminar usuario ${rol}?`,
       text: "Esta acción no se puede deshacer.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
-    }).then(async (result) => {
+    }).then((result) => {
       if (result.isConfirmed) {
-        try {
-          await axios.delete(`${apiUrl}/api/admin/usuarios/${id}`);
-          Swal.fire("Eliminado", "Usuario eliminado.", "success");
-          fetchUsuarios();
-        } catch (err) {
-          Swal.fire(
-            "Error",
-            err.response?.data?.message || "No se pudo eliminar",
-            "error"
-          );
-        }
+        requestConfirmation("eliminar", { id_usuario: id });
       }
     });
   };
@@ -202,10 +328,18 @@ const UsuariosAdmin = () => {
       telefono: "",
       correo: "",
       sexo: "",
-      rol: "admin",
+      rol: "",
       contrasena: "",
     });
     setEditId(null);
+  };
+
+  const handleResendCode = async () => {
+    if (!editId && !pendingDeleteId) return;
+
+    await requestConfirmation(pendingDeleteId ? "eliminar" : "editar", {
+      id_usuario: pendingDeleteId || editId,
+    });
   };
 
   return (
@@ -217,6 +351,104 @@ const UsuariosAdmin = () => {
         background: "#f5faff",
       }}
     >
+      {showConfirmationModal && (
+        <div className="modal-backdrop fade show"></div>
+      )}
+      {showConfirmationModal && (
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirmación Requerida</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setShowConfirmationModal(false);
+                    setConfirmationCode("");
+                  }}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>
+                  Se ha enviado un código de confirmación a tu correo
+                  electrónico. Por favor ingrésalo a continuación.
+                </p>
+                <div className="mb-3">
+                  <label className="form-label">Código de 4 dígitos</label>
+                  <input
+                    type="text"
+                    className="form-control text-center"
+                    value={confirmationCode}
+                    onChange={(e) => setConfirmationCode(e.target.value)}
+                    maxLength={4}
+                    style={{ letterSpacing: "0.5rem", fontSize: "1.5rem" }}
+                  />
+                </div>
+                <div className="text-center mb-3">
+                  <small className="text-muted">
+                    Tiempo restante: {Math.floor(timeLeft / 60)}:
+                    {String(timeLeft % 60).padStart(2, "0")}
+                  </small>
+                </div>
+                {timeLeft <= 0 && (
+                  <button
+                    className="btn btn-link p-0"
+                    onClick={handleResendCode}
+                  >
+                    Reenviar código
+                  </button>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowConfirmationModal(false);
+                    setConfirmationCode("");
+                    setPendingActionType(null);
+                    setPendingDeleteId(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    if (confirmationCode.length !== 4) {
+                      Swal.fire(
+                        "Error",
+                        "El código debe tener 4 dígitos",
+                        "error"
+                      );
+                      return;
+                    }
+
+                    if (pendingActionType === "editar") {
+                      handleEditConfirm();
+                    } else if (pendingActionType === "eliminar") {
+                      handleDeleteConfirm(pendingDeleteId);
+                    }
+                  }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <span className="spinner-border spinner-border-sm me-2"></span>
+                  ) : null}
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className="shadow p-4 rounded my-5"
         style={{
@@ -234,7 +466,6 @@ const UsuariosAdmin = () => {
           Gestión de Usuarios Admin
         </h3>
 
-        {/* Filtros de búsqueda */}
         <form className="row g-3 mb-4">
           <div className="col-md-4">
             <label className="form-label">
@@ -349,9 +580,11 @@ const UsuariosAdmin = () => {
               value={form.rol}
               onChange={handleChange}
               required
-              disabled
             >
+              <option value="">Selecciona un rol</option>
               <option value="admin">Admin</option>
+              <option value="paciente">Paciente</option>
+              <option value="medico">Médico</option>
             </select>
           </div>
           {!editId && (
@@ -381,7 +614,6 @@ const UsuariosAdmin = () => {
             </div>
           )}
 
-          {/* Sección de reconocimiento facial - solo para nuevos usuarios */}
           {!editId && (
             <div className="col-12">
               <div className="form-check mb-3">
@@ -520,24 +752,20 @@ const UsuariosAdmin = () => {
                       </span>
                     </td>
                     <td>
-                      {usuario.rol === "admin" && (
-                        <button
-                          className="btn btn-sm btn-outline-primary me-2"
-                          onClick={() => handleEdit(usuario)}
-                        >
-                          Editar
-                        </button>
-                      )}
-                      {usuario.rol === "admin" && (
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() =>
-                            handleDelete(usuario.id_usuario, usuario.rol)
-                          }
-                        >
-                          Eliminar
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-sm btn-outline-primary me-2"
+                        onClick={() => handleEdit(usuario)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() =>
+                          handleDelete(usuario.id_usuario, usuario.rol)
+                        }
+                      >
+                        Eliminar
+                      </button>
                     </td>
                   </tr>
                 ))

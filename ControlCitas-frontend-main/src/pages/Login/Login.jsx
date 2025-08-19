@@ -257,7 +257,7 @@ const Login = () => {
       <div className="login-container">
         <section className="login-section">
           <h2 className="text-center text-dark mb-3">
-            Iniciar sesión VersionUSB
+            Iniciar sesión VersionCorreo
           </h2>
 
           {/* Botones para alternar entre métodos de login */}

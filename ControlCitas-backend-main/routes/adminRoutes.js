@@ -28,17 +28,26 @@ const {
   getCitasPorEstado,
   getCitasPorMedico,
   getCitasPorDia,
+  verificarConfirmacion,
+  solicitarConfirmacion,
 } = require("../controllers/adminController");
 
 const router = express.Router();
 
+// Eliminamos los middlewares de autenticación que no existen
+// router.use(verifyToken);
+// router.use(isAdmin);
+
+// Endpoint para solicitar código de confirmación
+router.post("/usuarios/:id/solicitarConfirmacion", solicitarConfirmacion);
+
 // Usuarios
 router.get("/usuarios", getUsuarios);
 router.post("/usuarios", crearUsuario);
-router.put("/usuarios/:id_usuario", editarUsuario);
-router.delete("/usuarios/:id_usuario", eliminarUsuario);
+router.put("/usuarios/:id", editarUsuario);
+router.delete("/usuarios/:id", eliminarUsuario);
 
-// Médicos
+// Resto de las rutas permanecen igual...
 router.get("/medicos", getMedicos);
 router.post("/medicos", crearMedico);
 router.put("/medicos/:id_medico/estado", cambiarEstadoMedico);
@@ -60,7 +69,10 @@ router.get("/buscar-pacientes", buscarPacientes);
 router.get("/contactos-paciente", getContactosPacienteAdmin);
 router.post("/contactos-paciente", agregarContactoPacienteAdmin);
 router.put("/contactos-paciente/:id_contacto", editarContactoPacienteAdmin);
-router.delete("/contactos-paciente/:id_contacto", eliminarContactoPacienteAdmin);
+router.delete(
+  "/contactos-paciente/:id_contacto",
+  eliminarContactoPacienteAdmin
+);
 
 // Obtener paciente por ID
 router.get("/paciente/:id_paciente", getPacientePorId);
