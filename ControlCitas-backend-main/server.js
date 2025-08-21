@@ -23,6 +23,13 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Montar las rutas
+app.use('/api', userRoutes);
+app.use('/api/paciente', pacienteRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/medico', medicoRoutes);
+app.use('/api/usb', usbRoutes);
+
 // Conexión a la base de datos
 db.connect((err) => {
   if (err) {

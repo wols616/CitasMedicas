@@ -25,6 +25,11 @@ const UsuariosAdmin = () => {
   const [pendingAction, setPendingAction] = useState(null);
   const [pendingActionType, setPendingActionType] = useState(null);
   const [timeLeft, setTimeLeft] = useState(300);
+  const [verificationMethod, setVerificationMethod] = useState('code');
+  const [securityQuestion, setSecurityQuestion] = useState('');
+  const [securityAnswer, setSecurityAnswer] = useState('');
+  const [securityQuestionsConfigured, setSecurityQuestionsConfigured] = useState(false);
+  const [currentQuestionNumber, setCurrentQuestionNumber] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [busquedaId, setBusquedaId] = useState("");
@@ -147,13 +152,26 @@ const UsuariosAdmin = () => {
       const user = JSON.parse(localStorage.getItem("user"));
       const adminCorreo = user?.correo;
 
+      // Crear el objeto de datos base
+      const requestData = {
+        ...editData,
+        verificationMethod: verificationMethod,
+        adminCorreo: adminCorreo
+      };
+
+      // Agregar el código de confirmación solo si es necesario
+      if (verificationMethod === 'code') {
+        requestData.codigoConfirmacion = confirmationCode;
+      }
+
+      // Agregar bandera de verificación de pregunta si es ese método
+      if (verificationMethod === 'question') {
+        requestData.securityVerified = true;
+      }
+
       await axios.put(
         `${apiUrl}/api/admin/usuarios/${editId}`,
-        {
-          ...editData,
-          codigoConfirmacion: confirmationCode,
-          adminCorreo: adminCorreo,
-        },
+        requestData,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -188,6 +206,79 @@ const UsuariosAdmin = () => {
     }
   };
 
+  // Manejar el clic en el botón de pregunta de seguridad
+  const handleSecurityQuestionClick = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/security-question/${user.id_usuario}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      
+      if (response.data.configured) {
+        setSecurityQuestionsConfigured(true);
+        setSecurityQuestion(response.data.question);
+        setCurrentQuestionNumber(response.data.questionNumber);
+        setVerificationMethod('question');
+      } else {
+        setSecurityQuestionsConfigured(false);
+        Swal.fire({
+          icon: 'error',
+          title: 'No configurado',
+          text: 'Debes configurar tus preguntas de seguridad en la sección de Configuración de Seguridad antes de poder usar este método.',
+          confirmButtonText: 'Entendido'
+        });
+        setVerificationMethod('code');
+      }
+    } catch (error) {
+      console.error('Error al obtener la pregunta de seguridad:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo obtener la pregunta de seguridad. Por favor, intenta más tarde.',
+      });
+      setVerificationMethod('code');
+    }
+  };
+
+  // Verificar respuesta a pregunta de seguridad
+  const verifySecurityQuestionAnswer = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/verify-security-question`, {
+        userId: user.id_usuario,
+        questionNumber: currentQuestionNumber, // Necesitamos esta variable
+        answer: securityAnswer
+      }, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+
+      if (response.data.verified) {
+        return true;
+      } else {
+        Swal.fire({
+          icon: 'error',
+          title: 'Respuesta incorrecta',
+          text: 'La respuesta proporcionada no es correcta.',
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Error al verificar la respuesta:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo verificar la respuesta. Por favor, intenta más tarde.',
+      });
+      return false;
+    }
+  };
+
   const handleDeleteConfirm = async (id) => {
     try {
       setIsLoading(true);
@@ -196,9 +287,19 @@ const UsuariosAdmin = () => {
       const user = JSON.parse(localStorage.getItem("user"));
       const adminCorreo = user?.correo;
 
+      // Si se usa pregunta de seguridad, verificar primero
+      if (verificationMethod === 'question') {
+        const isVerified = await verifySecurityQuestionAnswer();
+        if (!isVerified) {
+          setIsLoading(false);
+          return;
+        }
+      }
+
       await axios.delete(`${apiUrl}/api/admin/usuarios/${id}`, {
         data: {
-          codigoConfirmacion: confirmationCode,
+          codigoConfirmacion: verificationMethod === 'code' ? confirmationCode : undefined,
+          securityVerified: verificationMethod === 'question',
           adminCorreo: adminCorreo,
         },
         headers: {
@@ -374,20 +475,67 @@ const UsuariosAdmin = () => {
                 ></button>
               </div>
               <div className="modal-body">
-                <p>
-                  Se ha enviado un código de confirmación a tu correo
-                  electrónico. Por favor ingrésalo a continuación.
-                </p>
+                {/* Opciones de verificación */}
                 <div className="mb-3">
-                  <label className="form-label">Código de 4 dígitos</label>
-                  <input
-                    type="text"
-                    className="form-control text-center"
-                    value={confirmationCode}
-                    onChange={(e) => setConfirmationCode(e.target.value)}
-                    maxLength={4}
-                    style={{ letterSpacing: "0.5rem", fontSize: "1.5rem" }}
-                  />
+                  <label className="form-label">Método de verificación</label>
+                  <div className="d-flex gap-2 mb-3">
+                    <button
+                      type="button"
+                      className={`btn ${
+                        verificationMethod === 'code' ? 'btn-primary' : 'btn-outline-primary'
+                      }`}
+                      onClick={() => setVerificationMethod('code')}
+                    >
+                      <i className="bi bi-envelope me-2"></i>
+                      Código por correo
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${
+                        verificationMethod === 'question' ? 'btn-primary' : 'btn-outline-primary'
+                      }`}
+                      onClick={handleSecurityQuestionClick}
+                    >
+                      <i className="bi bi-question-circle me-2"></i>
+                      Pregunta clave
+                    </button>
+                  </div>
+
+                  {verificationMethod === 'code' && (
+                    <>
+                      <p className="text-muted mb-3">
+                        Se ha enviado un código de confirmación a tu correo electrónico. 
+                        Por favor ingrésalo a continuación.
+                      </p>
+                      <label className="form-label">Código de 4 dígitos</label>
+                      <input
+                        type="text"
+                        className="form-control text-center"
+                        value={confirmationCode}
+                        onChange={(e) => setConfirmationCode(e.target.value)}
+                        maxLength={4}
+                        style={{ letterSpacing: "0.5rem", fontSize: "1.5rem" }}
+                      />
+                    </>
+                  )}
+
+                  {verificationMethod === 'question' && (
+                    <>
+                      <p className="text-muted mb-3">
+                        Por favor, responde a la siguiente pregunta de seguridad 
+                        para confirmar tu identidad.
+                      </p>
+                      <label className="form-label">{securityQuestion}</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={securityAnswer}
+                        onChange={(e) => setSecurityAnswer(e.target.value)}
+                        placeholder="Ingresa tu respuesta"
+                        minLength={1}
+                      />
+                    </>
+                  )}
                 </div>
                 <div className="text-center mb-3">
                   <small className="text-muted">
@@ -395,14 +543,16 @@ const UsuariosAdmin = () => {
                     {String(timeLeft % 60).padStart(2, "0")}
                   </small>
                 </div>
-                {timeLeft <= 0 && (
-                  <button
-                    className="btn btn-link p-0"
-                    onClick={handleResendCode}
-                  >
-                    Reenviar código
-                  </button>
-                )}
+                <div className="text-center">
+                  {timeLeft <= 0 && (
+                    <button
+                      className="btn btn-link p-0"
+                      onClick={handleResendCode}
+                    >
+                      Reenviar código
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="modal-footer">
                 <button
@@ -413,6 +563,10 @@ const UsuariosAdmin = () => {
                     setConfirmationCode("");
                     setPendingActionType(null);
                     setPendingDeleteId(null);
+                    setVerificationMethod('code');
+                    setSecurityQuestion('');
+                    setSecurityAnswer('');
+                    setSecurityQuestionsConfigured(false);
                   }}
                 >
                   Cancelar
@@ -420,20 +574,51 @@ const UsuariosAdmin = () => {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => {
-                    if (confirmationCode.length !== 4) {
+                  onClick={async () => {
+                    try {
+                      if (verificationMethod === 'code') {
+                        if (confirmationCode.length !== 4) {
+                          Swal.fire(
+                            "Error",
+                            "El código debe tener 4 dígitos",
+                            "error"
+                          );
+                          return;
+                        }
+                        // Continuar con la acción usando el código
+                        if (pendingActionType === "editar") {
+                          handleEditConfirm();
+                        } else if (pendingActionType === "eliminar") {
+                          handleDeleteConfirm(pendingDeleteId);
+                        }
+                      } else if (verificationMethod === 'question') {
+                        if (!securityAnswer.trim()) {
+                          Swal.fire(
+                            "Error",
+                            "Debes proporcionar una respuesta",
+                            "error"
+                          );
+                          return;
+                        }
+                        
+                        // Verificar la respuesta a la pregunta de seguridad primero
+                        const isVerified = await verifySecurityQuestionAnswer();
+                        if (isVerified) {
+                          // Solo si la respuesta es correcta, continuar con la acción
+                          if (pendingActionType === "editar") {
+                            handleEditConfirm();
+                          } else if (pendingActionType === "eliminar") {
+                            handleDeleteConfirm(pendingDeleteId);
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error en la verificación:', error);
                       Swal.fire(
                         "Error",
-                        "El código debe tener 4 dígitos",
+                        "Ocurrió un error durante la verificación",
                         "error"
                       );
-                      return;
-                    }
-
-                    if (pendingActionType === "editar") {
-                      handleEditConfirm();
-                    } else if (pendingActionType === "eliminar") {
-                      handleDeleteConfirm(pendingDeleteId);
                     }
                   }}
                   disabled={isLoading}
