@@ -118,10 +118,10 @@ exports.solicitarConfirmacion = async (req, res) => {
   );
 };
 
-// Middleware para verificar código de confirmación
+// Middleware para verificar código de confirmación o pregunta de seguridad
 exports.verificarConfirmacion = (req, res, next) => {
   const id_usuario = req.params.id || req.params.id_usuario;
-  const { codigoConfirmacion } = req.body;
+  const { codigoConfirmacion, verificationMethod } = req.body;
 
   // Obtener adminCorreo del localStorage (se debe enviar en el request)
   const adminCorreo = req.body.adminCorreo || req.headers["admin-correo"];
@@ -133,25 +133,52 @@ exports.verificarConfirmacion = (req, res, next) => {
     });
   }
 
+  // Si el método es por pregunta de seguridad, permitir el paso
+  if (verificationMethod === 'question') {
+    // La verificación ya se realizó en el frontend
+    console.log('Usando verificación por pregunta de seguridad');
+    return next();
+  }
+
+  // Si no se especifica método, asumir que es por código
+  if (verificationMethod !== 'code' && verificationMethod !== 'question') {
+    return res.status(400).json({
+      message: "Método de verificación no válido",
+      requiereConfirmacion: true,
+    });
+  }
+
+  // Para método de código, verificar el código
   const confirmacionKey = `${adminCorreo}_${id_usuario}`;
   const confirmacion = pendingConfirmations.get(confirmacionKey);
 
-  if (!confirmacion || confirmacion.codigo !== codigoConfirmacion) {
-    return res.status(400).json({
-      message: "Código de confirmación inválido o expirado",
-      requiereConfirmacion: true,
-    });
-  }
+  // Solo verificar código si el método es 'code'
+  if (verificationMethod === 'code') {
+    if (!codigoConfirmacion) {
+      return res.status(400).json({
+        message: "Debe proporcionar un código de confirmación",
+        requiereConfirmacion: true,
+      });
+    }
 
-  if (Date.now() > confirmacion.expira) {
+    if (!confirmacion || confirmacion.codigo !== codigoConfirmacion) {
+      return res.status(400).json({
+        message: "Código de confirmación inválido o expirado",
+        requiereConfirmacion: true,
+      });
+    }
+
+    if (Date.now() > confirmacion.expira) {
+      pendingConfirmations.delete(confirmacionKey);
+      return res.status(400).json({
+        message: "Código de confirmación expirado",
+        requiereConfirmacion: true,
+      });
+    }
+
     pendingConfirmations.delete(confirmacionKey);
-    return res.status(400).json({
-      message: "Código de confirmación expirado",
-      requiereConfirmacion: true,
-    });
   }
 
-  pendingConfirmations.delete(confirmacionKey);
   next();
 };
 
@@ -246,9 +273,22 @@ exports.crearUsuario = async (req, res) => {
 
 // Editar usuario con confirmación
 exports.editarUsuario = (req, res) => {
-  // Verificar confirmación primero
   const id_usuario = req.params.id;
-  const { codigoConfirmacion, adminCorreo } = req.body;
+  const { 
+    codigoConfirmacion, 
+    adminCorreo, 
+    verificationMethod,
+    securityVerified,
+    ...userData 
+  } = req.body;
+
+  console.log('Datos recibidos para editar:', {
+    id_usuario,
+    verificationMethod,
+    securityVerified,
+    adminCorreo,
+    userData
+  });
 
   if (!adminCorreo) {
     return res.status(400).json({
@@ -257,6 +297,65 @@ exports.editarUsuario = (req, res) => {
     });
   }
 
+  const procederConVerificacion = () => {
+    // Para verificación por pregunta de seguridad
+    if (verificationMethod === 'question') {
+      if (!securityVerified) {
+        return res.status(400).json({
+          message: "La verificación de seguridad no ha sido completada",
+          requiereConfirmacion: true,
+        });
+      }
+      console.log('Verificación por pregunta de seguridad completada');
+      return true;
+    }
+    
+    // Para verificación por código
+    else if (verificationMethod === 'code') {
+      const confirmacionKey = `${adminCorreo}_${id_usuario}`;
+      const confirmacion = pendingConfirmations.get(confirmacionKey);
+
+      if (!codigoConfirmacion) {
+        return res.status(400).json({
+          message: "Código de confirmación requerido",
+          requiereConfirmacion: true,
+        });
+      }
+
+      if (!confirmacion || confirmacion.codigo !== codigoConfirmacion) {
+        return res.status(400).json({
+          message: "Código de confirmación inválido o expirado",
+          requiereConfirmacion: true,
+        });
+      }
+
+      if (Date.now() > confirmacion.expira) {
+        pendingConfirmations.delete(confirmacionKey);
+        return res.status(400).json({
+          message: "Código de confirmación expirado",
+          requiereConfirmacion: true,
+        });
+      }
+
+      pendingConfirmations.delete(confirmacionKey);
+      return true;
+    } 
+    
+    else {
+      return res.status(400).json({
+        message: "Método de verificación no válido",
+        requiereConfirmacion: true,
+      });
+    }
+  };
+
+  // Si la verificación es por pregunta de seguridad y está verificada
+  if (securityVerified) {
+    console.log("Verificación por pregunta de seguridad completada");
+    return procederConActualizacion();
+  }
+
+  // Si no es por pregunta de seguridad, verificar código
   const confirmacionKey = `${adminCorreo}_${id_usuario}`;
   const confirmacion = pendingConfirmations.get(confirmacionKey);
 
@@ -275,30 +374,57 @@ exports.editarUsuario = (req, res) => {
     });
   }
 
+  // Eliminar el código de confirmación antes de proceder
   pendingConfirmations.delete(confirmacionKey);
+  return procederConActualizacion();
 
-  // Proceder con la edición
-  const { nombres, apellidos, direccion, telefono, correo, sexo, rol } =
-    req.body;
+  function procederConActualizacion() {
+    const { nombres, apellidos, direccion, telefono, sexo, rol } = userData;
+    
+    const query = `
+      UPDATE usuario
+      SET nombres = ?, 
+          apellidos = ?, 
+          direccion = ?, 
+          telefono = ?, 
+          sexo = ?, 
+          rol = ?
+      WHERE id_usuario = ?
+    `;
 
-  db.query(
-    "UPDATE usuario SET nombres=?, apellidos=?, direccion=?, telefono=?, correo=?, sexo=?, rol=? WHERE id_usuario=?",
-    [nombres, apellidos, direccion, telefono, correo, sexo, rol, id_usuario],
-    (err) => {
-      if (err) {
-        console.error("Error al editar usuario:", err);
-        return res.status(500).json({ message: "Error al editar usuario" });
-      }
-      res.json({ message: "Usuario actualizado correctamente" });
-    }
-  );
+    return new Promise((resolve, reject) => {
+      db.query(
+        query,
+        [nombres, apellidos, direccion, telefono, sexo, rol, id_usuario],
+        (err, result) => {
+          if (err) {
+            console.error('Error al actualizar usuario:', err);
+            return res.status(500).json({ 
+              message: "Error al actualizar usuario",
+              error: err.message 
+            });
+          }
+
+          if (result.affectedRows === 0) {
+            return res.status(404).json({ 
+              message: "Usuario no encontrado" 
+            });
+          }
+
+          return res.json({ 
+            message: "Usuario actualizado correctamente"
+          });
+        }
+      );
+    });
+  }
 };
 
 // Eliminar usuario con confirmación
 exports.eliminarUsuario = (req, res) => {
   // Verificar confirmación primero
   const id_usuario = req.params.id;
-  const { codigoConfirmacion, adminCorreo } = req.body;
+  const { codigoConfirmacion, adminCorreo, securityVerified } = req.body;
 
   if (!adminCorreo) {
     return res.status(400).json({
@@ -307,6 +433,30 @@ exports.eliminarUsuario = (req, res) => {
     });
   }
 
+  // Si la verificación es por pregunta de seguridad y está verificada
+  if (securityVerified) {
+    // Proceder con la eliminación
+    const query = "DELETE FROM usuario WHERE id_usuario = ?";
+    db.query(query, [id_usuario], (error, result) => {
+      if (error) {
+        console.error("Error al eliminar usuario:", error);
+        return res.status(500).json({ 
+          message: "Error al eliminar usuario" 
+        });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ 
+          message: "Usuario no encontrado" 
+        });
+      }
+      return res.json({ 
+        message: "Usuario eliminado correctamente" 
+      });
+    });
+    return;
+  }
+
+  // Si no es por pregunta de seguridad, verificar código
   const confirmacionKey = `${adminCorreo}_${id_usuario}`;
   const confirmacion = pendingConfirmations.get(confirmacionKey);
 
@@ -328,10 +478,13 @@ exports.eliminarUsuario = (req, res) => {
   pendingConfirmations.delete(confirmacionKey);
 
   // Proceder con la eliminación
-  db.query("DELETE FROM usuario WHERE id_usuario = ?", [id_usuario], (err) => {
+  db.query("DELETE FROM usuario WHERE id_usuario = ?", [id_usuario], (err, result) => {
     if (err) {
       console.error("Error al eliminar usuario:", err);
       return res.status(500).json({ message: "Error al eliminar usuario" });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
     }
     res.json({ message: "Usuario eliminado correctamente" });
   });

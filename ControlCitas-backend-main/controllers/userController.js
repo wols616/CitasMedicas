@@ -2,6 +2,13 @@ const db = require("../config/db");
 const bcrypt = require("bcryptjs"); //Libreria para encriptar contraseñas
 const nodemailer = require("nodemailer");
 
+// Preguntas de seguridad fijas del sistema
+const SECURITY_QUESTIONS = {
+  1: '¿Como se llamaba tu mascota de infancia?',
+  2: '¿Cuál era el nombre de tu maestro de tercer grado?',
+  3: '¿Cuál es tu pelicula favorita?'
+};
+
 //-----------Authenticator-----------------
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
@@ -38,6 +45,155 @@ function decrypt(payload) {
   const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
   return decrypted.toString("utf8");
 }
+
+// Función para actualizar las preguntas de seguridad del usuario
+exports.updateSecurityQuestions = async (req, res) => {
+  try {
+    console.log('Datos recibidos:', req.body);
+    const { userId, answers } = req.body;
+    
+    if (!userId) {
+      console.error('userId es undefined o null');
+      return res.status(400).json({ error: "El ID de usuario es requerido" });
+    }
+
+    if (!Array.isArray(answers)) {
+      console.error('answers no es un array:', answers);
+      return res.status(400).json({ error: "Las respuestas deben ser un array" });
+    }
+
+    if (answers.length !== 3) {
+      console.error('Número incorrecto de respuestas:', answers.length);
+      return res.status(400).json({ error: "Debe proporcionar las 3 respuestas de seguridad" });
+    }
+
+    // Primero verificar si el usuario existe
+    const checkUserQuery = 'SELECT id_usuario FROM usuario WHERE id_usuario = ?';
+    const [userRows] = await db.promise().query(checkUserQuery, [userId]);
+    
+    if (!userRows || userRows.length === 0) {
+      console.error('Usuario no encontrado:', userId);
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    console.log('Encriptando respuestas...');
+    const encryptedAnswers = answers.map(answer => encrypt(answer));
+    console.log('Respuestas encriptadas correctamente');
+
+    // Actualizar en la base de datos
+    const updateQuery = `
+      UPDATE usuario 
+      SET 
+        security_answer1 = ?,
+        security_answer2 = ?,
+        security_answer3 = ?
+      WHERE id_usuario = ?
+    `;
+
+    console.log('Ejecutando query con userId:', userId);
+    
+    const [result] = await db.promise().query(
+      updateQuery,
+      [
+        encryptedAnswers[0],
+        encryptedAnswers[1],
+        encryptedAnswers[2],
+        userId
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      console.error('No se actualizó ningún registro');
+      return res.status(404).json({ error: "No se pudo actualizar el usuario" });
+    }
+
+    console.log('Actualización exitosa:', result);
+    res.json({ message: "Preguntas de seguridad actualizadas correctamente" });
+    
+  } catch (err) {
+    console.error("Error al actualizar preguntas de seguridad:", err);
+    res.status(500).json({ 
+      error: "Error interno del servidor", 
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
+  }
+};
+
+// Función para verificar la respuesta a una pregunta de seguridad
+exports.verifySecurityQuestion = (req, res) => {
+  const { userId, questionNumber, answer } = req.body;
+
+  const query = `
+    SELECT security_answer${questionNumber}
+    FROM usuario WHERE id_usuario = ?
+  `;
+
+  db.query(query, [userId], (err, results) => {
+    if (err) {
+      console.error("Error al verificar pregunta de seguridad:", err);
+      return res.status(500).json({ error: "Error interno del servidor" });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const storedAnswer = decrypt(results[0][`security_answer${questionNumber}`]);
+    
+    if (answer.toLowerCase() === storedAnswer.toLowerCase()) {
+      res.json({ verified: true });
+    } else {
+      res.json({ verified: false });
+    }
+  });
+};
+
+// Función para obtener una pregunta de seguridad aleatoria del usuario
+exports.getRandomSecurityQuestion = (req, res) => {
+  const { userId } = req.params;
+
+  const query = `
+    SELECT 
+      security_answer1,
+      security_answer2,
+      security_answer3
+    FROM usuario WHERE id_usuario = ?
+  `;
+
+  db.query(query, [userId], (err, results) => {
+    if (err) {
+      console.error("Error al obtener respuestas de seguridad:", err);
+      return res.status(500).json({ error: "Error interno del servidor" });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Verificar si el usuario tiene respuestas configuradas
+    const answers = [
+      results[0].security_answer1,
+      results[0].security_answer2,
+      results[0].security_answer3
+    ];
+
+    if (!answers[0] || !answers[1] || !answers[2]) {
+      return res.status(400).json({ 
+        error: "Preguntas de seguridad no configuradas",
+        configured: false 
+      });
+    }
+
+    // Seleccionar una pregunta aleatoria
+    const randomIndex = Math.floor(Math.random() * 3);
+    
+    res.json({
+      questionNumber: randomIndex + 1,
+      question: SECURITY_QUESTIONS[randomIndex + 1],
+      configured: true
+    });
+  });
+};
 
 function generarRecoveryCodes(n = 8) {
   const codes = [];
@@ -998,3 +1154,5 @@ exports.recuperarContrasena = (req, res) => {
     }
   );
 };
+
+// No necesitamos un module.exports al final ya que estamos usando exports.nombreFuncion

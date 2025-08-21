@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import USBKeyManager from "../components/USBKeyManager";
 import MFASetup from "../components/MFASetup";
+import SecurityQuestions from "../components/SecurityQuestions";
 
 const ConfiguracionSeguridad = () => {
   const navigate = useNavigate();
@@ -49,12 +50,11 @@ const ConfiguracionSeguridad = () => {
                 <button
                   className={`nav-link ${activeTab === "mfa" ? "active" : ""}`}
                   onClick={() => setActiveTab("mfa")}
-                  type="button"
                 >
-                  <i className="bi bi-shield-check me-2"></i>
-                  Autenticación 2FA
+                  <i className="bi bi-shield-check me-1"></i>
+                  Autenticación de dos pasos
                 </button>
-              </li>
+              </li>                            
               <li className="nav-item" role="presentation">
                 <button
                   className={`nav-link ${activeTab === "usb" ? "active" : ""}`}
@@ -77,7 +77,19 @@ const ConfiguracionSeguridad = () => {
                   Contraseña
                 </button>
               </li>
+              <li className="nav-item" role="presentation">
+                <button
+                  className={`nav-link ${
+                    activeTab === "security-questions" ? "active" : ""
+                  }`}
+                  onClick={() => setActiveTab("security-questions")}
+                >
+                  <i className="bi bi-question-circle me-1"></i>
+                  Preguntas de Seguridad
+                </button>
+              </li>
             </ul>
+            
 
             {/* Tab Content */}
             <div className="tab-content" id="securityTabsContent">
@@ -107,6 +119,38 @@ const ConfiguracionSeguridad = () => {
                               Protege tu cuenta aunque alguien conozca tu
                               contraseña
                             </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Security Questions Tab */}
+              {activeTab === "security-questions" && (
+                <div className="tab-pane fade show active">
+                  <div className="row">
+                    <div className="col-12 col-lg-8">
+                      <SecurityQuestions />
+                    </div>
+                    <div className="col-12 col-lg-4">
+                      <div className="card bg-light border-0">
+                        <div className="card-body">
+                          <h6 className="card-title">
+                            <i className="bi bi-info-circle text-primary me-2"></i>
+                            Sobre las Preguntas de Seguridad
+                          </h6>
+                          <p className="card-text small text-muted">
+                            Las preguntas de seguridad proporcionan un método alternativo
+                            para verificar tu identidad al realizar acciones importantes
+                            en la gestión de usuarios.
+                          </p>
+                          <ul className="small text-muted">
+                            <li>Configura 3 preguntas de seguridad diferentes</li>
+                            <li>Usa respuestas que puedas recordar fácilmente</li>
+                            <li>No compartas las respuestas con nadie</li>
+                            <li>Las respuestas se almacenan de forma segura y cifrada</li>
                           </ul>
                         </div>
                       </div>
