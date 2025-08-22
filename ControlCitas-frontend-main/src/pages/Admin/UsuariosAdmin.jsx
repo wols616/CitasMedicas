@@ -3,9 +3,11 @@ import axios from "axios";
 import Swal from "sweetalert2";
 import FaceRecognition from "../../components/FaceRecognition";
 import ReloadFacesButton from "../../components/ReloadFacesButton";
+import RenamePhotoButton from "../../components/RenamePhotoButton";
 
 const UsuariosAdmin = () => {
   const [usuarios, setUsuarios] = useState([]);
+  const [usuariosConFotos, setUsuariosConFotos] = useState(new Set());
   const [registerFace, setRegisterFace] = useState(true);
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,15 +44,43 @@ const UsuariosAdmin = () => {
     fetchUsuarios();
   }, []);
 
-  const fetchUsuarios = () => {
-    axios
-      .get(`${apiUrl}/api/admin/usuarios`, {
+  const fetchUsuarios = async () => {
+    try {
+      const response = await axios.get(`${apiUrl}/api/admin/usuarios`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
-      })
-      .then((res) => setUsuarios(res.data))
-      .catch(() => setUsuarios([]));
+      });
+
+      const usuariosData = response.data;
+      setUsuarios(usuariosData);
+
+      // Verificar qué usuarios tienen fotos de reconocimiento facial
+      const usuariosConFotosSet = new Set();
+
+      for (const usuario of usuariosData) {
+        try {
+          const nombreCompleto = `${usuario.nombres} ${usuario.apellidos}`;
+          const checkResponse = await axios.post(`${apiUrl}/api/face/check`, {
+            name: nombreCompleto,
+          });
+
+          if (checkResponse.data.exists) {
+            usuariosConFotosSet.add(usuario.id_usuario);
+          }
+        } catch (error) {
+          // Si hay error al verificar, asumir que no tiene foto
+          console.warn(
+            `No se pudo verificar foto para ${usuario.nombres} ${usuario.apellidos}`
+          );
+        }
+      }
+
+      setUsuariosConFotos(usuariosConFotosSet);
+    } catch (error) {
+      console.error("Error al cargar usuarios:", error);
+      setUsuarios([]);
+    }
   };
 
   useEffect(() => {
@@ -171,13 +201,34 @@ const UsuariosAdmin = () => {
         requestData.securityVerified = true;
       }
 
-      await axios.put(`${apiUrl}/api/admin/usuarios/${editId}`, requestData, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await axios.put(
+        `${apiUrl}/api/admin/usuarios/${editId}`,
+        requestData,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
 
-      Swal.fire("¡Actualizado!", "Usuario actualizado.", "success");
+      // Verificar si se renombró la foto automáticamente
+      if (response.data.photoRenamed) {
+        Swal.fire({
+          title: "¡Usuario actualizado!",
+          html: `
+            <p>Usuario actualizado correctamente.</p>
+            <div class="alert alert-info mt-2">
+              <i class="bi bi-info-circle me-2"></i>
+              ${response.data.photoRenamed}
+            </div>
+          `,
+          icon: "success",
+          confirmButtonText: "Entendido",
+        });
+      } else {
+        Swal.fire("¡Actualizado!", "Usuario actualizado.", "success");
+      }
+
       setForm({
         nombres: "",
         apellidos: "",
@@ -920,13 +971,14 @@ const UsuariosAdmin = () => {
                 <th>Apellidos</th>
                 <th>Correo</th>
                 <th>Rol</th>
+                <th>Reconocimiento Facial</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {usuariosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center text-muted">
+                  <td colSpan="7" className="text-center text-muted">
                     No hay usuarios que coincidan con los criterios
                   </td>
                 </tr>
@@ -949,6 +1001,37 @@ const UsuariosAdmin = () => {
                       >
                         {usuario.rol}
                       </span>
+                    </td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        {usuariosConFotos.has(usuario.id_usuario) ? (
+                          <>
+                            <span className="badge bg-success">
+                              <i className="bi bi-camera-fill me-1"></i>
+                              Activo
+                            </span>
+                            <RenamePhotoButton
+                              oldName={`${usuario.nombres} ${usuario.apellidos}`}
+                              newName={`${usuario.nombres} ${usuario.apellidos}`}
+                              onRenameSuccess={() => {
+                                Swal.fire({
+                                  title: "Éxito",
+                                  text: "Foto renombrada correctamente",
+                                  icon: "success",
+                                  timer: 2000,
+                                  showConfirmButton: false,
+                                });
+                              }}
+                              size="sm"
+                            />
+                          </>
+                        ) : (
+                          <span className="badge bg-secondary">
+                            <i className="bi bi-camera-slash me-1"></i>
+                            Sin foto
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <button

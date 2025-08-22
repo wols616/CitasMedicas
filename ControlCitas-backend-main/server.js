@@ -127,6 +127,63 @@ app.post("/api/face/delete", async (req, res) => {
   }
 });
 
+// Nueva ruta para renombrar foto facial de usuario
+app.post("/api/face/rename", async (req, res) => {
+  try {
+    const { old_name, new_name } = req.body;
+    if (!old_name || !new_name) {
+      return res
+        .status(400)
+        .json({ message: "Debe proporcionar old_name y new_name" });
+    }
+
+    const formData = new FormData();
+    formData.append("old_name", old_name);
+    formData.append("new_name", new_name);
+
+    const response = await axios.post(`${FACE_API_URL}/rename`, formData, {
+      headers: formData.getHeaders(),
+    });
+
+    res.json(response.data);
+  } catch (err) {
+    console.error("Error al renombrar rostro:", err.message);
+    res.status(500).json({
+      error: "Error al renombrar rostro",
+      details: err.response?.data?.message || err.message,
+    });
+  }
+});
+
+// Nueva ruta para verificar si existe foto facial de usuario
+app.post("/api/face/check", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ message: "Nombre no proporcionado" });
+    }
+
+    const formData = new FormData();
+    formData.append("name", name);
+
+    const response = await axios.post(
+      `${FACE_API_URL}/photo-exists`,
+      formData,
+      {
+        headers: formData.getHeaders(),
+      }
+    );
+
+    res.json(response.data);
+  } catch (err) {
+    console.error("Error al verificar existencia de rostro:", err.message);
+    res.status(500).json({
+      error: "Error al verificar rostro",
+      exists: false,
+    });
+  }
+});
+
 app.get("/api/face/status", async (req, res) => {
   try {
     await axios.get(`${FACE_API_URL}/status`);

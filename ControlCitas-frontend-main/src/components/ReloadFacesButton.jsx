@@ -35,7 +35,7 @@ const ReloadFacesButton = () => {
 
   return (
     <button
-      className="btn btn-outline-info btn-sm"
+      className="btn btn-outline-info btn-sm d-none"
       onClick={reloadFaces}
       disabled={isLoading}
       title="Recargar rostros conocidos para reconocimiento facial"

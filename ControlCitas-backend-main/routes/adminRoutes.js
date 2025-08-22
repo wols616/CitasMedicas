@@ -30,6 +30,7 @@ const {
   getCitasPorDia,
   verificarConfirmacion,
   solicitarConfirmacion,
+  verificarConfirmacionEndpoint,
 } = require("../controllers/adminController");
 
 const router = express.Router();
@@ -40,6 +41,10 @@ const router = express.Router();
 
 // Endpoint para solicitar código de confirmación
 router.post("/usuarios/:id/solicitarConfirmacion", solicitarConfirmacion);
+router.post("/solicitar-confirmacion/:id", solicitarConfirmacion);
+
+// Endpoint para verificar confirmación
+router.post("/verificar-confirmacion/:id", verificarConfirmacionEndpoint);
 
 // Usuarios
 router.get("/usuarios", getUsuarios);

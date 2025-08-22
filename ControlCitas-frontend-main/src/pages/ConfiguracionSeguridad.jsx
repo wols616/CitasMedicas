@@ -4,6 +4,7 @@ import USBKeyManager from "../components/USBKeyManager";
 import MFASetup from "../components/MFASetup";
 import SecurityQuestions from "../components/SecurityQuestions";
 import FacePhotoManager from "../components/FacePhotoManager";
+import SecurityAccessControl from "../components/SecurityAccessControl";
 
 const ConfiguracionSeguridad = () => {
   const navigate = useNavigate();
@@ -110,7 +111,14 @@ const ConfiguracionSeguridad = () => {
                 <div className="tab-pane fade show active">
                   <div className="row">
                     <div className="col-12 col-lg-8">
-                      <MFASetup />
+                      <SecurityAccessControl
+                        sectionName="Autenticación de dos pasos"
+                        onAccessGranted={() =>
+                          console.log("Acceso concedido a MFA")
+                        }
+                      >
+                        <MFASetup />
+                      </SecurityAccessControl>
                     </div>
                     <div className="col-12 col-lg-4">
                       <div className="card bg-light border-0">
@@ -144,7 +152,16 @@ const ConfiguracionSeguridad = () => {
                 <div className="tab-pane fade show active">
                   <div className="row">
                     <div className="col-12 col-lg-8">
-                      <SecurityQuestions />
+                      <SecurityAccessControl
+                        sectionName="Preguntas de Seguridad"
+                        onAccessGranted={() =>
+                          console.log(
+                            "Acceso concedido a Preguntas de Seguridad"
+                          )
+                        }
+                      >
+                        <SecurityQuestions />
+                      </SecurityAccessControl>
                     </div>
                     <div className="col-12 col-lg-4">
                       <div className="card bg-light border-0">
@@ -183,7 +200,14 @@ const ConfiguracionSeguridad = () => {
                 <div className="tab-pane fade show active">
                   <div className="row">
                     <div className="col-12 col-lg-8">
-                      <FacePhotoManager />
+                      <SecurityAccessControl
+                        sectionName="Fotografía Facial"
+                        onAccessGranted={() =>
+                          console.log("Acceso concedido a Fotografía Facial")
+                        }
+                      >
+                        <FacePhotoManager />
+                      </SecurityAccessControl>
                     </div>
                     <div className="col-12 col-lg-4">
                       <div className="card bg-light border-0">
@@ -220,7 +244,14 @@ const ConfiguracionSeguridad = () => {
                 <div className="tab-pane fade show active">
                   <div className="row">
                     <div className="col-12 col-lg-8">
-                      <USBKeyManager />
+                      <SecurityAccessControl
+                        sectionName="Clave USB"
+                        onAccessGranted={() =>
+                          console.log("Acceso concedido a Clave USB")
+                        }
+                      >
+                        <USBKeyManager />
+                      </SecurityAccessControl>
                     </div>
                     <div className="col-12 col-lg-4">
                       <div className="card bg-light border-0">
@@ -255,35 +286,42 @@ const ConfiguracionSeguridad = () => {
                 <div className="tab-pane fade show active">
                   <div className="row">
                     <div className="col-12 col-lg-8">
-                      <div className="card">
-                        <div className="card-header">
-                          <h5 className="card-title mb-0">
-                            <i className="bi bi-key me-2"></i>
-                            Cambiar Contraseña
-                          </h5>
-                        </div>
-                        <div className="card-body">
-                          <p className="text-muted mb-4">
-                            Para cambiar tu contraseña, utiliza la opción
-                            disponible en tu perfil.
-                          </p>
-
-                          <div className="alert alert-info" role="alert">
-                            <i className="bi bi-lightbulb me-2"></i>
-                            <strong>Consejo de seguridad:</strong>
-                            Usa una contraseña fuerte que combine letras
-                            mayúsculas, minúsculas, números y símbolos.
+                      <SecurityAccessControl
+                        sectionName="Cambiar Contraseña"
+                        onAccessGranted={() =>
+                          console.log("Acceso concedido a Cambiar Contraseña")
+                        }
+                      >
+                        <div className="card">
+                          <div className="card-header">
+                            <h5 className="card-title mb-0">
+                              <i className="bi bi-key me-2"></i>
+                              Cambiar Contraseña
+                            </h5>
                           </div>
+                          <div className="card-body">
+                            <p className="text-muted mb-4">
+                              Para cambiar tu contraseña, utiliza la opción
+                              disponible en tu perfil.
+                            </p>
 
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => navigate("/cambiar-contrasena")}
-                          >
-                            <i className="bi bi-pencil me-1"></i>
-                            Cambiar Contraseña
-                          </button>
+                            <div className="alert alert-info" role="alert">
+                              <i className="bi bi-lightbulb me-2"></i>
+                              <strong>Consejo de seguridad:</strong>
+                              Usa una contraseña fuerte que combine letras
+                              mayúsculas, minúsculas, números y símbolos.
+                            </div>
+
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => navigate("/cambiar-contrasena")}
+                            >
+                              <i className="bi bi-pencil me-1"></i>
+                              Cambiar Contraseña
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      </SecurityAccessControl>
                     </div>
                     <div className="col-12 col-lg-4">
                       <div className="card bg-light border-0">

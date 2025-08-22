@@ -184,6 +184,51 @@ exports.verificarConfirmacion = (req, res, next) => {
   next();
 };
 
+// Endpoint específico para verificar confirmación (usado por SecurityAccessControl)
+exports.verificarConfirmacionEndpoint = (req, res) => {
+  const id_usuario = req.params.id || req.params.id_usuario;
+  const { codigoConfirmacion, verificationMethod, adminCorreo } = req.body;
+
+  if (!adminCorreo) {
+    return res
+      .status(400)
+      .json({ message: "Falta el correo del administrador" });
+  }
+
+  if (verificationMethod === "question") {
+    return res.json({
+      verificado: true,
+      message: "Verificación por pregunta de seguridad",
+    });
+  }
+
+  const confirmacionKey = `${adminCorreo}_${id_usuario}`;
+  const confirmacion = pendingConfirmations.get(confirmacionKey);
+
+  if (!confirmacion) {
+    return res
+      .status(400)
+      .json({ message: "No hay confirmación pendiente o ha expirado" });
+  }
+
+  if (confirmacion.expira < Date.now()) {
+    pendingConfirmations.delete(confirmacionKey);
+    return res
+      .status(400)
+      .json({ message: "El código de confirmación ha expirado" });
+  }
+
+  if (confirmacion.codigo !== codigoConfirmacion) {
+    return res
+      .status(400)
+      .json({ message: "Código de confirmación incorrecto" });
+  }
+
+  // Código correcto
+  pendingConfirmations.delete(confirmacionKey);
+  res.json({ verificado: true, message: "Código verificado correctamente" });
+};
+
 function formatearFecha(fechaStr) {
   if (!fechaStr) return "";
   if (typeof fechaStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) {
@@ -415,18 +460,71 @@ exports.editarUsuario = (req, res) => {
   function procederConActualizacion() {
     const { nombres, apellidos, direccion, telefono, sexo, rol } = userData;
 
-    const query = `
-      UPDATE usuario
-      SET nombres = ?, 
-          apellidos = ?, 
-          direccion = ?, 
-          telefono = ?, 
-          sexo = ?, 
-          rol = ?
-      WHERE id_usuario = ?
-    `;
+    // Primero obtener los datos actuales del usuario para comparar nombres
+    const getUserQuery = `SELECT nombres, apellidos FROM usuario WHERE id_usuario = ?`;
 
-    return new Promise((resolve, reject) => {
+    db.query(getUserQuery, [id_usuario], async (err, currentUserData) => {
+      if (err) {
+        console.error("Error al obtener datos actuales del usuario:", err);
+        return res.status(500).json({
+          message: "Error al obtener datos del usuario",
+          error: err.message,
+        });
+      }
+
+      if (currentUserData.length === 0) {
+        return res.status(404).json({
+          message: "Usuario no encontrado",
+        });
+      }
+
+      const currentUser = currentUserData[0];
+      const oldFullName = `${currentUser.nombres} ${currentUser.apellidos}`;
+      const newFullName = `${nombres} ${apellidos}`;
+
+      // Si el nombre cambió, intentar renombrar la foto en el servidor de reconocimiento facial
+      if (oldFullName !== newFullName) {
+        try {
+          console.log(
+            `Nombre cambió de "${oldFullName}" a "${newFullName}". Intentando renombrar foto...`
+          );
+
+          const formData = new FormData();
+          formData.append("old_name", oldFullName);
+          formData.append("new_name", newFullName);
+
+          const FACE_API_URL =
+            process.env.FACE_API_URL || "http://localhost:5001";
+          const response = await axios.post(
+            `${FACE_API_URL}/rename`,
+            formData,
+            {
+              headers: formData.getHeaders(),
+            }
+          );
+
+          console.log("Foto renombrada exitosamente:", response.data.message);
+        } catch (photoRenameError) {
+          // Si hay error renombrando la foto, loguearlo pero no fallar la actualización
+          console.warn(
+            "Advertencia: No se pudo renombrar la foto del usuario:",
+            photoRenameError.response?.data?.message || photoRenameError.message
+          );
+        }
+      }
+
+      // Proceder con la actualización del usuario en la base de datos
+      const query = `
+        UPDATE usuario
+        SET nombres = ?, 
+            apellidos = ?, 
+            direccion = ?, 
+            telefono = ?, 
+            sexo = ?, 
+            rol = ?
+        WHERE id_usuario = ?
+      `;
+
       db.query(
         query,
         [nombres, apellidos, direccion, telefono, sexo, rol, id_usuario],
@@ -447,6 +545,10 @@ exports.editarUsuario = (req, res) => {
 
           return res.json({
             message: "Usuario actualizado correctamente",
+            photoRenamed:
+              oldFullName !== newFullName
+                ? "Foto renombrada automáticamente"
+                : "Sin cambios en la foto",
           });
         }
       );
