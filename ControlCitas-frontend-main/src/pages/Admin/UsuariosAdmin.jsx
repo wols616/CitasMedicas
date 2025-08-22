@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import Swal from "sweetalert2";
 import FaceRecognition from "../../components/FaceRecognition";
+import ReloadFacesButton from "../../components/ReloadFacesButton";
 
 const UsuariosAdmin = () => {
   const [usuarios, setUsuarios] = useState([]);
@@ -25,10 +26,11 @@ const UsuariosAdmin = () => {
   const [pendingAction, setPendingAction] = useState(null);
   const [pendingActionType, setPendingActionType] = useState(null);
   const [timeLeft, setTimeLeft] = useState(300);
-  const [verificationMethod, setVerificationMethod] = useState('code');
-  const [securityQuestion, setSecurityQuestion] = useState('');
-  const [securityAnswer, setSecurityAnswer] = useState('');
-  const [securityQuestionsConfigured, setSecurityQuestionsConfigured] = useState(false);
+  const [verificationMethod, setVerificationMethod] = useState("code");
+  const [securityQuestion, setSecurityQuestion] = useState("");
+  const [securityAnswer, setSecurityAnswer] = useState("");
+  const [securityQuestionsConfigured, setSecurityQuestionsConfigured] =
+    useState(false);
   const [currentQuestionNumber, setCurrentQuestionNumber] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
@@ -156,28 +158,24 @@ const UsuariosAdmin = () => {
       const requestData = {
         ...editData,
         verificationMethod: verificationMethod,
-        adminCorreo: adminCorreo
+        adminCorreo: adminCorreo,
       };
 
       // Agregar el código de confirmación solo si es necesario
-      if (verificationMethod === 'code') {
+      if (verificationMethod === "code") {
         requestData.codigoConfirmacion = confirmationCode;
       }
 
       // Agregar bandera de verificación de pregunta si es ese método
-      if (verificationMethod === 'question') {
+      if (verificationMethod === "question") {
         requestData.securityVerified = true;
       }
 
-      await axios.put(
-        `${apiUrl}/api/admin/usuarios/${editId}`,
-        requestData,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
+      await axios.put(`${apiUrl}/api/admin/usuarios/${editId}`, requestData, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
 
       Swal.fire("¡Actualizado!", "Usuario actualizado.", "success");
       setForm({
@@ -209,71 +207,78 @@ const UsuariosAdmin = () => {
   // Manejar el clic en el botón de pregunta de seguridad
   const handleSecurityQuestionClick = async () => {
     try {
-      const user = JSON.parse(localStorage.getItem('user'));
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/security-question/${user.id_usuario}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+      const user = JSON.parse(localStorage.getItem("user"));
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/security-question/${
+          user.id_usuario
+        }`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
         }
-      });
-      
-      
+      );
+
       if (response.data.configured) {
         setSecurityQuestionsConfigured(true);
         setSecurityQuestion(response.data.question);
         setCurrentQuestionNumber(response.data.questionNumber);
-        setVerificationMethod('question');
+        setVerificationMethod("question");
       } else {
         setSecurityQuestionsConfigured(false);
         Swal.fire({
-          icon: 'error',
-          title: 'No configurado',
-          text: 'Debes configurar tus preguntas de seguridad en la sección de Configuración de Seguridad antes de poder usar este método.',
-          confirmButtonText: 'Entendido'
+          icon: "error",
+          title: "No configurado",
+          text: "Debes configurar tus preguntas de seguridad en la sección de Configuración de Seguridad antes de poder usar este método.",
+          confirmButtonText: "Entendido",
         });
-        setVerificationMethod('code');
+        setVerificationMethod("code");
       }
     } catch (error) {
-      console.error('Error al obtener la pregunta de seguridad:', error);
+      console.error("Error al obtener la pregunta de seguridad:", error);
       Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'No se pudo obtener la pregunta de seguridad. Por favor, intenta más tarde.',
+        icon: "error",
+        title: "Error",
+        text: "No se pudo obtener la pregunta de seguridad. Por favor, intenta más tarde.",
       });
-      setVerificationMethod('code');
+      setVerificationMethod("code");
     }
   };
 
   // Verificar respuesta a pregunta de seguridad
   const verifySecurityQuestionAnswer = async () => {
     try {
-      const user = JSON.parse(localStorage.getItem('user'));
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/verify-security-question`, {
-        userId: user.id_usuario,
-        questionNumber: currentQuestionNumber, // Necesitamos esta variable
-        answer: securityAnswer
-      }, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+      const user = JSON.parse(localStorage.getItem("user"));
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/verify-security-question`,
+        {
+          userId: user.id_usuario,
+          questionNumber: currentQuestionNumber, // Necesitamos esta variable
+          answer: securityAnswer,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
         }
-      });
-
+      );
 
       if (response.data.verified) {
         return true;
       } else {
         Swal.fire({
-          icon: 'error',
-          title: 'Respuesta incorrecta',
-          text: 'La respuesta proporcionada no es correcta.',
+          icon: "error",
+          title: "Respuesta incorrecta",
+          text: "La respuesta proporcionada no es correcta.",
         });
         return false;
       }
     } catch (error) {
-      console.error('Error al verificar la respuesta:', error);
+      console.error("Error al verificar la respuesta:", error);
       Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'No se pudo verificar la respuesta. Por favor, intenta más tarde.',
+        icon: "error",
+        title: "Error",
+        text: "No se pudo verificar la respuesta. Por favor, intenta más tarde.",
       });
       return false;
     }
@@ -288,7 +293,7 @@ const UsuariosAdmin = () => {
       const adminCorreo = user?.correo;
 
       // Si se usa pregunta de seguridad, verificar primero
-      if (verificationMethod === 'question') {
+      if (verificationMethod === "question") {
         const isVerified = await verifySecurityQuestionAnswer();
         if (!isVerified) {
           setIsLoading(false);
@@ -298,8 +303,9 @@ const UsuariosAdmin = () => {
 
       await axios.delete(`${apiUrl}/api/admin/usuarios/${id}`, {
         data: {
-          codigoConfirmacion: verificationMethod === 'code' ? confirmationCode : undefined,
-          securityVerified: verificationMethod === 'question',
+          codigoConfirmacion:
+            verificationMethod === "code" ? confirmationCode : undefined,
+          securityVerified: verificationMethod === "question",
           adminCorreo: adminCorreo,
         },
         headers: {
@@ -482,9 +488,11 @@ const UsuariosAdmin = () => {
                     <button
                       type="button"
                       className={`btn ${
-                        verificationMethod === 'code' ? 'btn-primary' : 'btn-outline-primary'
+                        verificationMethod === "code"
+                          ? "btn-primary"
+                          : "btn-outline-primary"
                       }`}
-                      onClick={() => setVerificationMethod('code')}
+                      onClick={() => setVerificationMethod("code")}
                     >
                       <i className="bi bi-envelope me-2"></i>
                       Código por correo
@@ -492,7 +500,9 @@ const UsuariosAdmin = () => {
                     <button
                       type="button"
                       className={`btn ${
-                        verificationMethod === 'question' ? 'btn-primary' : 'btn-outline-primary'
+                        verificationMethod === "question"
+                          ? "btn-primary"
+                          : "btn-outline-primary"
                       }`}
                       onClick={handleSecurityQuestionClick}
                     >
@@ -501,11 +511,11 @@ const UsuariosAdmin = () => {
                     </button>
                   </div>
 
-                  {verificationMethod === 'code' && (
+                  {verificationMethod === "code" && (
                     <>
                       <p className="text-muted mb-3">
-                        Se ha enviado un código de confirmación a tu correo electrónico. 
-                        Por favor ingrésalo a continuación.
+                        Se ha enviado un código de confirmación a tu correo
+                        electrónico. Por favor ingrésalo a continuación.
                       </p>
                       <label className="form-label">Código de 4 dígitos</label>
                       <input
@@ -519,10 +529,10 @@ const UsuariosAdmin = () => {
                     </>
                   )}
 
-                  {verificationMethod === 'question' && (
+                  {verificationMethod === "question" && (
                     <>
                       <p className="text-muted mb-3">
-                        Por favor, responde a la siguiente pregunta de seguridad 
+                        Por favor, responde a la siguiente pregunta de seguridad
                         para confirmar tu identidad.
                       </p>
                       <label className="form-label">{securityQuestion}</label>
@@ -563,9 +573,9 @@ const UsuariosAdmin = () => {
                     setConfirmationCode("");
                     setPendingActionType(null);
                     setPendingDeleteId(null);
-                    setVerificationMethod('code');
-                    setSecurityQuestion('');
-                    setSecurityAnswer('');
+                    setVerificationMethod("code");
+                    setSecurityQuestion("");
+                    setSecurityAnswer("");
                     setSecurityQuestionsConfigured(false);
                   }}
                 >
@@ -576,7 +586,7 @@ const UsuariosAdmin = () => {
                   className="btn btn-primary"
                   onClick={async () => {
                     try {
-                      if (verificationMethod === 'code') {
+                      if (verificationMethod === "code") {
                         if (confirmationCode.length !== 4) {
                           Swal.fire(
                             "Error",
@@ -591,7 +601,7 @@ const UsuariosAdmin = () => {
                         } else if (pendingActionType === "eliminar") {
                           handleDeleteConfirm(pendingDeleteId);
                         }
-                      } else if (verificationMethod === 'question') {
+                      } else if (verificationMethod === "question") {
                         if (!securityAnswer.trim()) {
                           Swal.fire(
                             "Error",
@@ -600,7 +610,7 @@ const UsuariosAdmin = () => {
                           );
                           return;
                         }
-                        
+
                         // Verificar la respuesta a la pregunta de seguridad primero
                         const isVerified = await verifySecurityQuestionAnswer();
                         if (isVerified) {
@@ -613,7 +623,7 @@ const UsuariosAdmin = () => {
                         }
                       }
                     } catch (error) {
-                      console.error('Error en la verificación:', error);
+                      console.error("Error en la verificación:", error);
                       Swal.fire(
                         "Error",
                         "Ocurrió un error durante la verificación",
@@ -650,6 +660,10 @@ const UsuariosAdmin = () => {
         >
           Gestión de Usuarios Admin
         </h3>
+
+        <div className="d-flex justify-content-end mb-3">
+          <ReloadFacesButton />
+        </div>
 
         <form className="row g-3 mb-4">
           <div className="col-md-4">

@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
+const axios = require("axios");
+const FormData = require("form-data");
 
 // Variable global para almacenar códigos pendientes (en memoria)
 const pendingConfirmations = new Map();
@@ -134,14 +136,14 @@ exports.verificarConfirmacion = (req, res, next) => {
   }
 
   // Si el método es por pregunta de seguridad, permitir el paso
-  if (verificationMethod === 'question') {
+  if (verificationMethod === "question") {
     // La verificación ya se realizó en el frontend
-    console.log('Usando verificación por pregunta de seguridad');
+    console.log("Usando verificación por pregunta de seguridad");
     return next();
   }
 
   // Si no se especifica método, asumir que es por código
-  if (verificationMethod !== 'code' && verificationMethod !== 'question') {
+  if (verificationMethod !== "code" && verificationMethod !== "question") {
     return res.status(400).json({
       message: "Método de verificación no válido",
       requiereConfirmacion: true,
@@ -153,7 +155,7 @@ exports.verificarConfirmacion = (req, res, next) => {
   const confirmacion = pendingConfirmations.get(confirmacionKey);
 
   // Solo verificar código si el método es 'code'
-  if (verificationMethod === 'code') {
+  if (verificationMethod === "code") {
     if (!codigoConfirmacion) {
       return res.status(400).json({
         message: "Debe proporcionar un código de confirmación",
@@ -215,6 +217,9 @@ exports.getUsuarios = (req, res) => {
 
 // Crear usuario (admin puede crear cualquier usuario)
 exports.crearUsuario = async (req, res) => {
+  console.log("=== INICIO crearUsuario ===");
+  console.log("Datos recibidos:", req.body);
+
   const {
     nombres,
     apellidos,
@@ -236,16 +241,37 @@ exports.crearUsuario = async (req, res) => {
     !sexo ||
     !rol
   ) {
+    console.log("Error: Campos faltantes");
     return res
       .status(400)
       .json({ message: "Todos los campos son obligatorios" });
   }
 
-  try {
-    const hashedPassword = await bcrypt.hash(contrasena, 10);
-    db.query(
-      "INSERT INTO usuario (nombres, apellidos, direccion, telefono, correo, contrasena, sexo, rol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [
+  // Verificar si el correo ya existe
+  console.log("Verificando si el correo ya existe:", correo);
+  const checkEmailSql = "SELECT * FROM usuario WHERE correo = ?";
+  db.query(checkEmailSql, [correo], async (err, results) => {
+    if (err) {
+      console.error("Error al verificar el correo:", err);
+      return res.status(500).json({ message: "Error al verificar el correo" });
+    }
+
+    if (results.length > 0) {
+      console.log("El correo ya existe");
+      return res
+        .status(400)
+        .json({ message: "El correo ya está registrado. Usa otro email." });
+    }
+
+    console.log("Correo disponible, procediendo a crear usuario");
+
+    try {
+      const hashedPassword = await bcrypt.hash(contrasena, 10);
+      console.log("Contraseña hasheada exitosamente");
+
+      const insertSql =
+        "INSERT INTO usuario (nombres, apellidos, direccion, telefono, correo, contrasena, sexo, rol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+      const values = [
         nombres,
         apellidos,
         direccion,
@@ -254,40 +280,50 @@ exports.crearUsuario = async (req, res) => {
         hashedPassword,
         sexo,
         rol,
-      ],
-      (err, result) => {
+      ];
+
+      console.log("Ejecutando query INSERT con valores:", values);
+
+      db.query(insertSql, values, (err, result) => {
         if (err) {
-          console.error("Error al crear usuario:", err);
+          console.error("Error al crear usuario en BD:", err);
           return res.status(500).json({ message: "Error al crear usuario" });
         }
-        res.status(201).json({ message: "Usuario creado correctamente" });
-      }
-    );
-  } catch (err) {
-    console.error("Error al encriptar contraseña:", err);
-    return res
-      .status(500)
-      .json({ message: "Error al encriptar la contraseña" });
-  }
+
+        console.log("Usuario creado exitosamente. Insert ID:", result.insertId);
+        console.log("Affected rows:", result.affectedRows);
+
+        res.status(201).json({
+          message: "Usuario creado correctamente",
+          id_usuario: result.insertId,
+        });
+      });
+    } catch (err) {
+      console.error("Error al encriptar contraseña:", err);
+      return res
+        .status(500)
+        .json({ message: "Error al encriptar la contraseña" });
+    }
+  });
 };
 
 // Editar usuario con confirmación
 exports.editarUsuario = (req, res) => {
   const id_usuario = req.params.id;
-  const { 
-    codigoConfirmacion, 
-    adminCorreo, 
+  const {
+    codigoConfirmacion,
+    adminCorreo,
     verificationMethod,
     securityVerified,
-    ...userData 
+    ...userData
   } = req.body;
 
-  console.log('Datos recibidos para editar:', {
+  console.log("Datos recibidos para editar:", {
     id_usuario,
     verificationMethod,
     securityVerified,
     adminCorreo,
-    userData
+    userData,
   });
 
   if (!adminCorreo) {
@@ -299,19 +335,19 @@ exports.editarUsuario = (req, res) => {
 
   const procederConVerificacion = () => {
     // Para verificación por pregunta de seguridad
-    if (verificationMethod === 'question') {
+    if (verificationMethod === "question") {
       if (!securityVerified) {
         return res.status(400).json({
           message: "La verificación de seguridad no ha sido completada",
           requiereConfirmacion: true,
         });
       }
-      console.log('Verificación por pregunta de seguridad completada');
+      console.log("Verificación por pregunta de seguridad completada");
       return true;
     }
-    
+
     // Para verificación por código
-    else if (verificationMethod === 'code') {
+    else if (verificationMethod === "code") {
       const confirmacionKey = `${adminCorreo}_${id_usuario}`;
       const confirmacion = pendingConfirmations.get(confirmacionKey);
 
@@ -339,9 +375,7 @@ exports.editarUsuario = (req, res) => {
 
       pendingConfirmations.delete(confirmacionKey);
       return true;
-    } 
-    
-    else {
+    } else {
       return res.status(400).json({
         message: "Método de verificación no válido",
         requiereConfirmacion: true,
@@ -380,7 +414,7 @@ exports.editarUsuario = (req, res) => {
 
   function procederConActualizacion() {
     const { nombres, apellidos, direccion, telefono, sexo, rol } = userData;
-    
+
     const query = `
       UPDATE usuario
       SET nombres = ?, 
@@ -398,21 +432,21 @@ exports.editarUsuario = (req, res) => {
         [nombres, apellidos, direccion, telefono, sexo, rol, id_usuario],
         (err, result) => {
           if (err) {
-            console.error('Error al actualizar usuario:', err);
-            return res.status(500).json({ 
+            console.error("Error al actualizar usuario:", err);
+            return res.status(500).json({
               message: "Error al actualizar usuario",
-              error: err.message 
+              error: err.message,
             });
           }
 
           if (result.affectedRows === 0) {
-            return res.status(404).json({ 
-              message: "Usuario no encontrado" 
+            return res.status(404).json({
+              message: "Usuario no encontrado",
             });
           }
 
-          return res.json({ 
-            message: "Usuario actualizado correctamente"
+          return res.json({
+            message: "Usuario actualizado correctamente",
           });
         }
       );
@@ -435,22 +469,56 @@ exports.eliminarUsuario = (req, res) => {
 
   // Si la verificación es por pregunta de seguridad y está verificada
   if (securityVerified) {
-    // Proceder con la eliminación
-    const query = "DELETE FROM usuario WHERE id_usuario = ?";
-    db.query(query, [id_usuario], (error, result) => {
-      if (error) {
-        console.error("Error al eliminar usuario:", error);
-        return res.status(500).json({ 
-          message: "Error al eliminar usuario" 
-        });
+    // Primero obtener el nombre del usuario para eliminar su foto
+    const getUserQuery =
+      "SELECT nombres, apellidos FROM usuario WHERE id_usuario = ?";
+    db.query(getUserQuery, [id_usuario], async (err, userResult) => {
+      if (err) {
+        console.error("Error al obtener usuario:", err);
+        return res.status(500).json({ message: "Error al obtener usuario" });
       }
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ 
-          message: "Usuario no encontrado" 
-        });
+
+      if (userResult.length === 0) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
       }
-      return res.json({ 
-        message: "Usuario eliminado correctamente" 
+
+      const user = userResult[0];
+      const nombreCompleto = `${user.nombres} ${user.apellidos}`;
+
+      // Intentar eliminar la foto facial del usuario
+      try {
+        const formData = new FormData();
+        formData.append("name", nombreCompleto);
+
+        await axios.post("http://localhost:5001/delete", formData, {
+          headers: formData.getHeaders(),
+        });
+        console.log(`Foto facial eliminada para: ${nombreCompleto}`);
+      } catch (faceError) {
+        console.log(
+          `No se pudo eliminar la foto facial para: ${nombreCompleto}`,
+          faceError.message
+        );
+        // No detener el proceso si no se puede eliminar la foto
+      }
+
+      // Proceder con la eliminación del usuario
+      const deleteQuery = "DELETE FROM usuario WHERE id_usuario = ?";
+      db.query(deleteQuery, [id_usuario], (error, result) => {
+        if (error) {
+          console.error("Error al eliminar usuario:", error);
+          return res.status(500).json({
+            message: "Error al eliminar usuario",
+          });
+        }
+        if (result.affectedRows === 0) {
+          return res.status(404).json({
+            message: "Usuario no encontrado",
+          });
+        }
+        return res.json({
+          message: "Usuario eliminado correctamente",
+        });
       });
     });
     return;
@@ -477,16 +545,54 @@ exports.eliminarUsuario = (req, res) => {
 
   pendingConfirmations.delete(confirmacionKey);
 
-  // Proceder con la eliminación
-  db.query("DELETE FROM usuario WHERE id_usuario = ?", [id_usuario], (err, result) => {
+  // Primero obtener el nombre del usuario para eliminar su foto
+  const getUserQuery =
+    "SELECT nombres, apellidos FROM usuario WHERE id_usuario = ?";
+  db.query(getUserQuery, [id_usuario], async (err, userResult) => {
     if (err) {
-      console.error("Error al eliminar usuario:", err);
-      return res.status(500).json({ message: "Error al eliminar usuario" });
+      console.error("Error al obtener usuario:", err);
+      return res.status(500).json({ message: "Error al obtener usuario" });
     }
-    if (result.affectedRows === 0) {
+
+    if (userResult.length === 0) {
       return res.status(404).json({ message: "Usuario no encontrado" });
     }
-    res.json({ message: "Usuario eliminado correctamente" });
+
+    const user = userResult[0];
+    const nombreCompleto = `${user.nombres} ${user.apellidos}`;
+
+    // Intentar eliminar la foto facial del usuario
+    try {
+      const formData = new FormData();
+      formData.append("name", nombreCompleto);
+
+      await axios.post("http://localhost:5001/delete", formData, {
+        headers: formData.getHeaders(),
+      });
+      console.log(`Foto facial eliminada para: ${nombreCompleto}`);
+    } catch (faceError) {
+      console.log(
+        `No se pudo eliminar la foto facial para: ${nombreCompleto}`,
+        faceError.message
+      );
+      // No detener el proceso si no se puede eliminar la foto
+    }
+
+    // Proceder con la eliminación del usuario
+    db.query(
+      "DELETE FROM usuario WHERE id_usuario = ?",
+      [id_usuario],
+      (err, result) => {
+        if (err) {
+          console.error("Error al eliminar usuario:", err);
+          return res.status(500).json({ message: "Error al eliminar usuario" });
+        }
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ message: "Usuario no encontrado" });
+        }
+        res.json({ message: "Usuario eliminado correctamente" });
+      }
+    );
   });
 };
 

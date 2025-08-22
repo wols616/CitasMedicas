@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import USBKeyManager from "../components/USBKeyManager";
 import MFASetup from "../components/MFASetup";
 import SecurityQuestions from "../components/SecurityQuestions";
+import FacePhotoManager from "../components/FacePhotoManager";
 
 const ConfiguracionSeguridad = () => {
   const navigate = useNavigate();
@@ -54,7 +55,19 @@ const ConfiguracionSeguridad = () => {
                   <i className="bi bi-shield-check me-1"></i>
                   Autenticación de dos pasos
                 </button>
-              </li>                            
+              </li>
+              <li className="nav-item" role="presentation">
+                <button
+                  className={`nav-link ${
+                    activeTab === "face-photo" ? "active" : ""
+                  }`}
+                  onClick={() => setActiveTab("face-photo")}
+                  type="button"
+                >
+                  <i className="bi bi-camera me-2"></i>
+                  Fotografía Facial
+                </button>
+              </li>
               <li className="nav-item" role="presentation">
                 <button
                   className={`nav-link ${activeTab === "usb" ? "active" : ""}`}
@@ -89,7 +102,6 @@ const ConfiguracionSeguridad = () => {
                 </button>
               </li>
             </ul>
-            
 
             {/* Tab Content */}
             <div className="tab-content" id="securityTabsContent">
@@ -142,15 +154,59 @@ const ConfiguracionSeguridad = () => {
                             Sobre las Preguntas de Seguridad
                           </h6>
                           <p className="card-text small text-muted">
-                            Las preguntas de seguridad proporcionan un método alternativo
-                            para verificar tu identidad al realizar acciones importantes
-                            en la gestión de usuarios.
+                            Las preguntas de seguridad proporcionan un método
+                            alternativo para verificar tu identidad al realizar
+                            acciones importantes en la gestión de usuarios.
                           </p>
                           <ul className="small text-muted">
-                            <li>Configura 3 preguntas de seguridad diferentes</li>
-                            <li>Usa respuestas que puedas recordar fácilmente</li>
+                            <li>
+                              Configura 3 preguntas de seguridad diferentes
+                            </li>
+                            <li>
+                              Usa respuestas que puedas recordar fácilmente
+                            </li>
                             <li>No compartas las respuestas con nadie</li>
-                            <li>Las respuestas se almacenan de forma segura y cifrada</li>
+                            <li>
+                              Las respuestas se almacenan de forma segura y
+                              cifrada
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Face Photo Tab */}
+              {activeTab === "face-photo" && (
+                <div className="tab-pane fade show active">
+                  <div className="row">
+                    <div className="col-12 col-lg-8">
+                      <FacePhotoManager />
+                    </div>
+                    <div className="col-12 col-lg-4">
+                      <div className="card bg-light border-0">
+                        <div className="card-body">
+                          <h6 className="card-title">
+                            <i className="bi bi-info-circle text-primary me-2"></i>
+                            Sobre el Reconocimiento Facial
+                          </h6>
+                          <p className="card-text small text-muted">
+                            El reconocimiento facial te permite iniciar sesión
+                            usando solo tu rostro, sin necesidad de recordar
+                            contraseñas.
+                          </p>
+                          <ul className="small text-muted">
+                            <li>Toma o sube una foto clara de tu rostro</li>
+                            <li>
+                              Evita usar lentes oscuros o accesorios que cubran
+                              tu cara
+                            </li>
+                            <li>
+                              La foto se guarda de forma segura y encriptada
+                            </li>
+                            <li>Puedes actualizarla cuando quieras</li>
                           </ul>
                         </div>
                       </div>

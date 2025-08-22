@@ -24,11 +24,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // Montar las rutas
-app.use('/api', userRoutes);
-app.use('/api/paciente', pacienteRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/medico', medicoRoutes);
-app.use('/api/usb', usbRoutes);
+app.use("/api", userRoutes);
+app.use("/api/paciente", pacienteRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/medico", medicoRoutes);
+app.use("/api/usb", usbRoutes);
 
 // Conexión a la base de datos
 db.connect((err) => {
@@ -85,6 +85,45 @@ app.post("/api/face/register", upload.single("image"), async (req, res) => {
   } catch (err) {
     console.error("Error al registrar rostro:", err.message);
     res.status(500).json({ error: "Error al registrar rostro" });
+  }
+});
+
+// Nueva ruta para recargar rostros conocidos
+app.post("/api/reload-faces", async (req, res) => {
+  try {
+    await axios.post(`${FACE_API_URL}/load-known-faces`);
+    res.json({
+      status: "success",
+      message: "Rostros conocidos recargados exitosamente",
+    });
+  } catch (err) {
+    console.error("Error al recargar rostros:", err.message);
+    res.status(500).json({
+      status: "error",
+      message: "Error al recargar rostros conocidos",
+    });
+  }
+});
+
+// Nueva ruta para eliminar foto facial de usuario
+app.post("/api/face/delete", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ message: "Nombre no proporcionado" });
+    }
+
+    const formData = new FormData();
+    formData.append("name", name);
+
+    const response = await axios.post(`${FACE_API_URL}/delete`, formData, {
+      headers: formData.getHeaders(),
+    });
+
+    res.json(response.data);
+  } catch (err) {
+    console.error("Error al eliminar rostro:", err.message);
+    res.status(500).json({ error: "Error al eliminar rostro" });
   }
 });
 
